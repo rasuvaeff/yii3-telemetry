@@ -27,3 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TracerProviderInterface`.
 - Property tests (traceparent round-trip, span duration, attribute round-trip)
   and a `ConfigWiringTest` guarding the DI contract.
+- `TraceContextLogger` — PSR-3 decorator adding `trace_id`/`span_id` to log
+  context inside an active trace (pass-through otherwise; never overwrites
+  caller-provided keys).
+- `TraceIdResponseHeaderMiddleware` — opt-in PSR-15 middleware exposing the
+  current trace id as a response header (default `X-Trace-Id`).

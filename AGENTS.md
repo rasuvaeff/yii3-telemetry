@@ -18,7 +18,9 @@ Public API: `Tracer` (facade), `TracerInterface`, `TracerProviderInterface`,
 `TraceContextPropagator`, `ClockInterface`, `SystemClock`,
 `Exception\InvalidArgumentException`. Instrumentation:
 `HttpClientSpanDecorator` (PSR-18), `TracingCacheDecorator` (PSR-16),
-`DbQueryProfiler` (`yiisoft/db`), `ViewRenderSpanListener` (`yiisoft/view`).
+`DbQueryProfiler` (`yiisoft/db`), `ViewRenderSpanListener` (`yiisoft/view`),
+`TraceContextLogger` (PSR-3 log correlation), `TraceIdResponseHeaderMiddleware`
+(PSR-15, opt-in trace-id response header).
 
 **Core depends on `open-telemetry/api`** (thin: interfaces + `NoopTracer`, no
 SDK). Types are *not* a parallel model — they mirror OTel so a backend adapter
@@ -103,6 +105,10 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
   `composer-require-checker.json` — a sanctioned optional-soft-dep declaration,
   NOT a suppression. Do not delete that file. `db.statement` uses **parameterized**
   SQL (`context->asArray()['sql']`), never the value-substituted token.
+- `TraceContextLogger` never overwrites caller-provided `trace_id`/`span_id`
+  keys and is a pass-through without a valid context. `TraceIdResponseHeaderMiddleware`
+  must sit AFTER (inside) the tracing middleware — it reads the context after
+  `handle()`, which is only valid while the root span is still active.
 - **SQL debug features are deferred, not forgotten**: the plan's
   `TELEMETRY_SQL_PARAMS` debug mode, secret masking, and slow-query threshold are
   deliberately NOT in 1.0.0 — parameter values are never attached to a span at

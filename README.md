@@ -160,6 +160,8 @@ would fatal when the subsystem isn't installed.
 | `TracingCacheDecorator` | a PSR-16 cache | `cache.<op>` |
 | `DbQueryProfiler` | `yiisoft/db` profiler | `db.query` (parameterized SQL only) |
 | `ViewRenderSpanListener` | `yiisoft/view` PSR-14 events | `view.render` |
+| `TraceContextLogger` | a PSR-3 logger | adds `trace_id`/`span_id` to log context |
+| `TraceIdResponseHeaderMiddleware` | PSR-15 response | `X-Trace-Id` response header (opt-in) |
 
 ```php
 // HTTP client (PSR-18) — inner client is wrapped
@@ -180,6 +182,22 @@ AfterRender::class  => [[ViewRenderSpanListener::class, 'afterRender']],
 begin/end hooks with `Tracer::startSpan()` (a manual span the caller ends).
 `yiisoft/db` and `yiisoft/view` are optional (`suggest`); their symbols are
 declared in `composer-require-checker.json`.
+
+### Log correlation & exposing the trace id
+
+```php
+// Wrap the application logger — every record inside an active trace gets
+// trace_id / span_id in its context (existing keys are never overwritten):
+$logger = new TraceContextLogger($innerLogger, $tracer);
+
+// Opt-in: return the trace id to the client for support tickets. Place it
+// AFTER the tracing middleware (inside the root span):
+$middleware = new TraceIdResponseHeaderMiddleware($tracer);              // X-Trace-Id
+$middleware = new TraceIdResponseHeaderMiddleware($tracer, 'Trace-Ref'); // custom name
+```
+
+Without an active valid trace context both are transparent: the log record and
+the response pass through unchanged.
 
 ## Security
 

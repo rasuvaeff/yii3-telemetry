@@ -138,3 +138,18 @@ $connection->setProfiler(new DbQueryProfiler($tracer)); // yiisoft/db → 'db.qu
   `composer-require-checker.json`. Queue instrumentation is deferred
   (`yiisoft/queue` has no stable release).
 - HTTP + cache use `trace()`; DB + view use `startSpan()` (split begin/end).
+
+### Log correlation / trace id exposure
+
+```php
+use Rasuvaeff\Yii3Telemetry\{TraceContextLogger, TraceIdResponseHeaderMiddleware};
+
+// PSR-3 decorator: adds trace_id/span_id to log context inside an active trace;
+// never overwrites caller-provided keys; pass-through when no valid context.
+$logger = new TraceContextLogger($innerPsr3Logger, $tracer);
+
+// PSR-15, opt-in, place AFTER (inside) the tracing middleware. Sets the header
+// only when the context is valid. Empty header name throws.
+new TraceIdResponseHeaderMiddleware($tracer);                    // X-Trace-Id
+new TraceIdResponseHeaderMiddleware($tracer, headerName: 'T-R'); // custom
+```
