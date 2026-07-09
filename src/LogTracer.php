@@ -43,7 +43,7 @@ final class LogTracer implements TracerInterface
         bool $scoped = true,
         TraceKind $traceKind = TraceKind::Internal,
     ): mixed {
-        $span = $this->startSpan($name, $attributes, $traceKind);
+        $span = $this->createSpan($name, $attributes, $traceKind);
 
         if ($scoped) {
             $this->spanStack[] = $span;
@@ -66,6 +66,22 @@ final class LogTracer implements TracerInterface
         }
     }
 
+    /**
+     * Creates a detached recording span (not activated, not logged until the
+     * caller ends it — a {@see LogTracer} only logs spans it manages in
+     * {@see trace()}).
+     *
+     * @param array<string, bool|int|float|string|array|null> $attributes
+     */
+    #[\Override]
+    public function startSpan(
+        string $name,
+        array $attributes = [],
+        TraceKind $traceKind = TraceKind::Internal,
+    ): SpanInterface {
+        return $this->createSpan($name, $attributes, $traceKind);
+    }
+
     #[\Override]
     public function currentSpan(): SpanInterface
     {
@@ -85,7 +101,7 @@ final class LogTracer implements TracerInterface
     /**
      * @param array<string, bool|int|float|string|array|null> $attributes
      */
-    private function startSpan(string $name, array $attributes, TraceKind $kind): Span
+    private function createSpan(string $name, array $attributes, TraceKind $kind): Span
     {
         $span = new Span($name, $this->childContext(), $kind, $this->clock);
 

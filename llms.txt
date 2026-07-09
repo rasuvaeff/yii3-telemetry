@@ -44,10 +44,16 @@ $value = $tracer->trace(
 
 $tracer->currentSpan();  // SpanInterface, never null
 $tracer->getContext();   // TraceContext (invalid if none active)
+
+// Manual span for split begin/end (caller ends it; NOT activated):
+$span = $tracer->startSpan('db.query', ['db.system' => 'sql'], TraceKind::Client);
+// ... work ...
+$span->end();
 ```
 
 trace() contract: returns callback value; on throw → recordException + status
 Error + end + rethrow; nested trace inherits parent traceId; end() idempotent.
+startSpan() = trace() minus callback/scoped/auto-end; parent = active span.
 
 ### SpanInterface
 
@@ -109,3 +115,21 @@ $clock = new SystemClock();      // implements Psr\Clock\ClockInterface + monoto
 $clock->now();                   // \DateTimeImmutable (wall)
 $clock->monotonicNanos();        // int (hrtime, for durations)
 ```
+
+### Instrumentation (backend-agnostic; wire app-side, never in core di.php)
+
+```php
+use Rasuvaeff\Yii3Telemetry\{HttpClientSpanDecorator, TracingCacheDecorator, DbQueryProfiler, ViewRenderSpanListener};
+
+new HttpClientSpanDecorator($psr18Client, $tracer);   // PSR-18 → 'HTTP <method>' + traceparent inject
+new TracingCacheDecorator($psr16Cache, $tracer);      // PSR-16 → 'cache.<op>'
+$connection->setProfiler(new DbQueryProfiler($tracer)); // yiisoft/db → 'db.query' (parameterized SQL only)
+// yiisoft/view PSR-14 (config/events.php):
+//   BeforeRender::class => [[ViewRenderSpanListener::class, 'beforeRender']]
+//   AfterRender::class  => [[ViewRenderSpanListener::class, 'afterRender']]
+```
+
+- `yiisoft/db` / `yiisoft/view` are `suggest` (optional); their symbols are in
+  `composer-require-checker.json`. Queue instrumentation is deferred
+  (`yiisoft/queue` has no stable release).
+- HTTP + cache use `trace()`; DB + view use `startSpan()` (split begin/end).

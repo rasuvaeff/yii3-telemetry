@@ -40,6 +40,18 @@ final readonly class Tracer implements TracerInterface
         return $this->tracer->trace($name, $callback, $attributes, $scoped, $traceKind);
     }
 
+    /**
+     * @param array<string, bool|int|float|string|array|null> $attributes
+     */
+    #[\Override]
+    public function startSpan(
+        string $name,
+        array $attributes = [],
+        TraceKind $traceKind = TraceKind::Internal,
+    ): SpanInterface {
+        return $this->tracer->startSpan($name, $attributes, $traceKind);
+    }
+
     #[\Override]
     public function currentSpan(): SpanInterface
     {

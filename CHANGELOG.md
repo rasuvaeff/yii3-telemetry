@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TraceContext` (W3C) with validation and `TraceContextPropagator`
   (extract from incoming server request, inject into outgoing client request).
 - `ClockInterface` (extends PSR-20) and `SystemClock` (wall + monotonic clocks).
+- `TracerInterface::startSpan()` — a manual recording span (not activated; caller
+  ends it) for split begin/end instrumentation.
+- Instrumentation (backend-agnostic, calls the facade):
+  `HttpClientSpanDecorator` (PSR-18), `TracingCacheDecorator` (PSR-16),
+  `DbQueryProfiler` (`yiisoft/db` profiler, parameterized SQL only),
+  `ViewRenderSpanListener` (`yiisoft/view` PSR-14 events). Their subsystem wiring
+  is app-side (never unconditional in core `di.php`).
 - `yiisoft/config` wiring: core binds only the facade; the backend or app owns
   `TracerProviderInterface`.
 - Property tests (traceparent round-trip, span duration, attribute round-trip)

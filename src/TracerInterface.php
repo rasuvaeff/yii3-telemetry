@@ -39,6 +39,23 @@ interface TracerInterface
     ): mixed;
 
     /**
+     * Starts a recording span WITHOUT a callback and returns it. The caller owns
+     * its lifetime and MUST call {@see SpanInterface::end()}.
+     *
+     * Unlike {@see trace()}, the span is NOT activated — it does not become
+     * {@see currentSpan()} — but it does inherit the currently active span as its
+     * parent. Use it for split begin/end instrumentation (a DB profiler, a view
+     * render listener) whose two halves cannot be wrapped in a single callback.
+     *
+     * @param array<string, bool|int|float|string|array|null> $attributes
+     */
+    public function startSpan(
+        string $name,
+        array $attributes = [],
+        TraceKind $traceKind = TraceKind::Internal,
+    ): SpanInterface;
+
+    /**
      * The active span, or a non-recording span when none is active. Never `null`.
      */
     public function currentSpan(): SpanInterface;

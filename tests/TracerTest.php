@@ -10,6 +10,7 @@ use Rasuvaeff\Yii3Telemetry\NullTracerProvider;
 use Rasuvaeff\Yii3Telemetry\SpanInterface;
 use Rasuvaeff\Yii3Telemetry\Tests\Support\QueueClock;
 use Rasuvaeff\Yii3Telemetry\Tests\Support\RecordingLogger;
+use Rasuvaeff\Yii3Telemetry\TraceKind;
 use Rasuvaeff\Yii3Telemetry\Tracer;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -168,5 +169,29 @@ final class TracerTest
 
         Assert::count($logger->records, 1);
         Assert::true($logger->records[0]['context']['duration_ns'] >= 0);
+    }
+
+    public function startSpanReturnsADetachedRecordingSpan(): void
+    {
+        $tracer = new LogTracer(new RecordingLogger(), new QueueClock(new \DateTimeImmutable('@0'), 1, 2));
+
+        $span = $tracer->startSpan('manual', ['k' => 'v'], TraceKind::Client);
+
+        Assert::true($span->isRecording());
+        // Not activated: it does not become the current span.
+        Assert::false($tracer->currentSpan()->isRecording());
+
+        $span->end();
+        Assert::false($span->isRecording());
+    }
+
+    public function nullTracerStartSpanIsNonRecording(): void
+    {
+        Assert::false(NullTracer::instance()->startSpan('x')->isRecording());
+    }
+
+    public function facadeStartSpanDelegatesToProviderTracer(): void
+    {
+        Assert::false((new Tracer(new NullTracerProvider()))->startSpan('x')->isRecording());
     }
 }

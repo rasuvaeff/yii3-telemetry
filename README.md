@@ -143,6 +143,39 @@ return [
 Installing `yii3-telemetry-otel` provides the real binding instead — binding it
 in two vendor packages is a deliberate `yiisoft/config` `Duplicate key` error.
 
+## Instrumentation
+
+Backend-agnostic instrumentation that records spans through the facade. Wire it
+**app-side** — never unconditionally in a package `di.php`, or the container
+would fatal when the subsystem isn't installed.
+
+| Class | Wraps / listens to | Spans |
+|---|---|---|
+| `HttpClientSpanDecorator` | a PSR-18 client | `HTTP <method>` (+ `traceparent` injected) |
+| `TracingCacheDecorator` | a PSR-16 cache | `cache.<op>` |
+| `DbQueryProfiler` | `yiisoft/db` profiler | `db.query` (parameterized SQL only) |
+| `ViewRenderSpanListener` | `yiisoft/view` PSR-14 events | `view.render` |
+
+```php
+// HTTP client (PSR-18) — inner client is wrapped
+$client = new HttpClientSpanDecorator($innerClient, $tracer);
+
+// Cache (PSR-16)
+$cache = new TracingCacheDecorator($innerCache, $tracer);
+
+// DB (yiisoft/db)
+$connection->setProfiler(new DbQueryProfiler($tracer));
+
+// View (yiisoft/view) — register in config/events.php
+BeforeRender::class => [[ViewRenderSpanListener::class, 'beforeRender']],
+AfterRender::class  => [[ViewRenderSpanListener::class, 'afterRender']],
+```
+
+`DbQueryProfiler` and `ViewRenderSpanListener` bracket a subsystem's split
+begin/end hooks with `Tracer::startSpan()` (a manual span the caller ends).
+`yiisoft/db` and `yiisoft/view` are optional (`suggest`); their symbols are
+declared in `composer-require-checker.json`.
+
 ## Security
 
 - **SQL/secret safety** lives with the DB instrumentation (1.1.0), not here.

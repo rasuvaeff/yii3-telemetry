@@ -8,6 +8,7 @@ needs no external services.
 | `01_basic_trace.php` | One span with attributes via `LogTracer`, PSR-3 output | no |
 | `02_nested_trace.php` | Nested `trace()` — child inherits the parent `traceId` | no |
 | `03_propagation.php` | W3C `traceparent` inject (outgoing) / extract (incoming) | no |
+| `04_instrumentation.php` | `HttpClientSpanDecorator` wrapping a PSR-18 client | no |
 
 ## Running
 

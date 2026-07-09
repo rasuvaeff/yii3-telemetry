@@ -41,6 +41,18 @@ final class NullTracer implements TracerInterface
         return $callback(NullSpan::instance());
     }
 
+    /**
+     * @param array<string, bool|int|float|string|array|null> $attributes
+     */
+    #[\Override]
+    public function startSpan(
+        string $name,
+        array $attributes = [],
+        TraceKind $traceKind = TraceKind::Internal,
+    ): SpanInterface {
+        return NullSpan::instance();
+    }
+
     #[\Override]
     public function currentSpan(): SpanInterface
     {

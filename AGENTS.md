@@ -16,7 +16,9 @@ Public API: `Tracer` (facade), `TracerInterface`, `TracerProviderInterface`,
 `NullTracer`, `NullTracerProvider`, `LogTracer`, `SpanInterface`, `Span`,
 `NullSpan`, `TraceKind`, `SpanStatus`, `SpanStatusCode`, `TraceContext`,
 `TraceContextPropagator`, `ClockInterface`, `SystemClock`,
-`Exception\InvalidArgumentException`.
+`Exception\InvalidArgumentException`. Instrumentation:
+`HttpClientSpanDecorator` (PSR-18), `TracingCacheDecorator` (PSR-16),
+`DbQueryProfiler` (`yiisoft/db`), `ViewRenderSpanListener` (`yiisoft/view`).
 
 **Core depends on `open-telemetry/api`** (thin: interfaces + `NoopTracer`, no
 SDK). Types are *not* a parallel model — they mirror OTel so a backend adapter
@@ -54,7 +56,10 @@ intentional (mirrors `yiisoft/cache`).
    - nested `trace()` inherits the parent `traceId`;
    - a dropped/disabled span still runs the callback; `currentSpan()` then returns
      a non-recording span, **never `null`**. `end()` is idempotent.
-   Do not add methods to `SpanInterface`/`TracerInterface` beyond this contract.
+   `TracerInterface` also has `startSpan()` — a manual recording span (NOT
+   activated; the caller ends it) for split begin/end instrumentation. On success
+   a span keeps status Unset (never auto-`Ok`). Do not add further methods to
+   `SpanInterface`/`TracerInterface` — every impl (Null/Log/Otel) must stay in sync.
 4. **Preserve the public contract.** Update README + tests with any API change.
 
 ## Commands
@@ -89,10 +94,17 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
 - `config/di.php` and `config/params.php` are outside the cs/psalm/testo gate.
   `ConfigWiringTest` guards them (facade keys present, `TracerProviderInterface`
   absent, no-op resolution). Verify wiring changes there, not via the build gate.
-- Subsystem instrumentation (DB profiler, queue middleware, cache/HTTP decorator,
-  view listener) is **not in 1.0.0** — it lands in 1.1.0 and its wiring is
-  app-side, never unconditional in core `di.php` (would fatal without the
-  subsystem installed).
+- **Instrumentation wiring is app-side, NEVER unconditional in core `di.php`**
+  (`ProfilerInterface => DbQueryProfiler`, the view listener, the decorators):
+  the container would fatal if the subsystem isn't installed. `HttpClientSpanDecorator`
+  (PSR-18) and `TracingCacheDecorator` (PSR-16) are pure-PSR (hard `require`);
+  `DbQueryProfiler`/`ViewRenderSpanListener` reference `yiisoft/db`/`yiisoft/view`
+  symbols (optional `suggest` + `require-dev`), whitelisted in
+  `composer-require-checker.json` — a sanctioned optional-soft-dep declaration,
+  NOT a suppression. Do not delete that file. `db.statement` uses **parameterized**
+  SQL (`context->asArray()['sql']`), never the value-substituted token.
+- **Queue instrumentation is deferred**: `yiisoft/queue` has no stable release
+  (dev-master only); do NOT add `minimum-stability: dev` to this core for it.
 - Code: `declare(strict_types=1)`, `final readonly class` (or `final class` when
   a static/singleton or mutable state is needed), `#[\Override]`, explicit types.
 - **CI workflows are SHA-pinned.** Every `uses:` in `.github/workflows/*.yml`
