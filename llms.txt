@@ -67,6 +67,11 @@ $span->isRecording(): bool;       // false for NullSpan / after end
 $span->getTraceContext(): TraceContext;
 ```
 
+The concrete `Span` (LogTracer) adds getters: `getName()`, `getKind()`,
+`getStatus(): SpanStatus` (value object: `code: SpanStatusCode`,
+`description: ?string`), `getAttributes()`, `getRecordedExceptions()`,
+`getDurationNanos()`, `hasEnded()`.
+
 ### Tracers / providers
 
 ```php

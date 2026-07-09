@@ -103,6 +103,10 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
   `composer-require-checker.json` — a sanctioned optional-soft-dep declaration,
   NOT a suppression. Do not delete that file. `db.statement` uses **parameterized**
   SQL (`context->asArray()['sql']`), never the value-substituted token.
+- **SQL debug features are deferred, not forgotten**: the plan's
+  `TELEMETRY_SQL_PARAMS` debug mode, secret masking, and slow-query threshold are
+  deliberately NOT in 1.0.0 — parameter values are never attached to a span at
+  all (safer than masking). If added later, they must be opt-in, off by default.
 - **Queue instrumentation is deferred**: `yiisoft/queue` has no stable release
   (dev-master only); do NOT add `minimum-stability: dev` to this core for it.
 - Code: `declare(strict_types=1)`, `final readonly class` (or `final class` when

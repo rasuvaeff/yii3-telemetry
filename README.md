@@ -83,6 +83,11 @@ The callback receives the active `SpanInterface` and its return value becomes th
 | `isRecording()` | `false` for non-recording spans |
 | `getTraceContext()` | the span's `TraceContext` |
 
+The concrete `Span` (recorded by `LogTracer`) additionally exposes getters:
+`getName()`, `getKind()`, `getStatus(): SpanStatus` (a value object pairing a
+`SpanStatusCode` with an optional description), `getAttributes()`,
+`getRecordedExceptions()`, `getDurationNanos()`, `hasEnded()`.
+
 ### Tracers
 
 | Class | Use |
@@ -178,7 +183,10 @@ declared in `composer-require-checker.json`.
 
 ## Security
 
-- **SQL/secret safety** lives with the DB instrumentation (1.1.0), not here.
+- **SQL safety**: `DbQueryProfiler` puts only the **parameterized** SQL into
+  `db.statement` — parameter values are never attached to a span. A debug
+  opt-in for parameter values and a slow-query threshold are deliberately not
+  implemented; if they land later, they will be off by default.
 - `TraceContext` validates ids (hex32 / hex16) and flags (0..255) in its
   constructor; malformed propagation headers are rejected, not trusted.
 - `trace()` never swallows exceptions — failures stay visible.
