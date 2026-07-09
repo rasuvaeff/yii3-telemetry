@@ -18,20 +18,20 @@ use Psr\Log\LoggerTrait;
  *
  * @api
  */
-final class TraceContextLogger implements LoggerInterface
+final readonly class TraceContextLogger implements LoggerInterface
 {
     use LoggerTrait;
 
     public function __construct(
-        private readonly LoggerInterface $logger,
-        private readonly TracerInterface $tracer,
+        private LoggerInterface $logger,
+        private TracerInterface $tracer,
     ) {}
 
     /**
      * @param array<array-key, mixed> $context
      */
     #[\Override]
-    public function log($level, \Stringable|string $message, array $context = []): void
+    public function log(mixed $level, \Stringable|string $message, array $context = []): void
     {
         $traceContext = $this->tracer->getContext();
 

@@ -85,9 +85,9 @@ final class TraceIdResponseHeaderMiddlewareTest
 
     private function handler(): RequestHandlerInterface
     {
-        return new class ($this->factory) implements RequestHandlerInterface {
+        return new readonly class ($this->factory) implements RequestHandlerInterface {
             public function __construct(
-                private readonly Psr17Factory $factory,
+                private Psr17Factory $factory,
             ) {}
 
             #[\Override]
