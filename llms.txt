@@ -1,0 +1,111 @@
+# rasuvaeff/yii3-telemetry
+
+Vendor-neutral tracing core for Yii3. Ergonomic `trace(name, callback)` facade
+over a swappable OpenTelemetry-compatible backend. Namespace `Rasuvaeff\Yii3Telemetry`.
+
+## Install
+
+```bash
+composer require rasuvaeff/yii3-telemetry
+```
+
+Backend (real export, Sprint 2): `rasuvaeff/yii3-telemetry-otel`. Without it,
+bind `TracerProviderInterface => NullTracerProvider` in the app.
+
+## Rules
+
+- Core depends on `open-telemetry/api` (thin). Types mirror OTel, no parallel
+  model: `TraceKind->value == SpanKind::KIND_*`, `SpanStatusCode->value ==
+  StatusCode::STATUS_*`, `TraceContext` = W3C fields.
+- `config/di.php` binds ONLY the facade (`Tracer`, `TracerInterface`). NEVER bind
+  `TracerProviderInterface` in core — one source owns it (backend or app), else
+  `yiisoft/config` `Duplicate key`.
+- `trace()` contract is frozen at 1.0.0 (roave/bc-check). Do not add methods to
+  `SpanInterface`/`TracerInterface`.
+- `currentSpan()` is never `null` — a dropped/disabled span returns a
+  non-recording span.
+- Two clocks, never mixed: `now()` (wall, PSR-20) vs `monotonicNanos()` (duration).
+- PHP 8.3+, 64-bit only.
+
+## API
+
+### Tracer facade
+
+```php
+use Rasuvaeff\Yii3Telemetry\{Tracer, SpanInterface, TraceKind, SpanStatusCode};
+
+$value = $tracer->trace(
+    name: 'checkout.process',
+    callback: static fn (SpanInterface $span): string => $span->setAttribute('k', 'v') ?? 'ok',
+    attributes: ['user.id' => '7'],   // array<string, bool|int|float|string|array|null>
+    scoped: true,                     // default true; span becomes currentSpan()
+    traceKind: TraceKind::Internal,   // Internal|Client|Server|Producer|Consumer
+);
+
+$tracer->currentSpan();  // SpanInterface, never null
+$tracer->getContext();   // TraceContext (invalid if none active)
+```
+
+trace() contract: returns callback value; on throw → recordException + status
+Error + end + rethrow; nested trace inherits parent traceId; end() idempotent.
+
+### SpanInterface
+
+```php
+$span->setAttribute(string $key, bool|int|float|string|array|null $value): void;
+$span->updateName(string $name): void;
+$span->setStatus(SpanStatusCode $code, ?string $description = null): void;
+$span->recordException(\Throwable $e): void;
+$span->end(): void;               // idempotent
+$span->isRecording(): bool;       // false for NullSpan / after end
+$span->getTraceContext(): TraceContext;
+```
+
+### Tracers / providers
+
+```php
+use Rasuvaeff\Yii3Telemetry\{NullTracer, NullTracerProvider, LogTracer};
+
+new LogTracer($psrLogger);                 // dev: records real spans, logs each
+NullTracer::instance();                    // no-op
+new Tracer($tracerProvider);               // facade; provider->getTracer()
+(new NullTracerProvider())->getTracer();   // => NullTracer
+```
+
+### TraceContext (W3C)
+
+```php
+use Rasuvaeff\Yii3Telemetry\TraceContext;
+
+$ctx = new TraceContext(
+    traceId: '0af7651916cd43dd8448eb211c80319c', // 32 lowercase hex
+    spanId: 'b7ad6b7169203331',                  // 16 lowercase hex
+    traceFlags: 1,                               // 0..255, bit 0 = sampled
+    traceState: '',                              // opaque tracestate
+);
+$ctx->isValid();   // false for all-zero (TraceContext::invalid())
+$ctx->isSampled();
+$ctx->equals($other);
+```
+
+Constructor throws `Exception\InvalidArgumentException` on malformed id/flags.
+
+### Propagator
+
+```php
+use Rasuvaeff\Yii3Telemetry\TraceContextPropagator;
+
+$p = new TraceContextPropagator();
+$ctx = $p->extract($serverRequest);          // incoming ServerRequestInterface
+$req = $p->inject($ctx, $clientRequest);     // outgoing RequestInterface (+traceparent)
+```
+
+### Clock
+
+```php
+use Rasuvaeff\Yii3Telemetry\{ClockInterface, SystemClock};
+
+$clock = new SystemClock();      // implements Psr\Clock\ClockInterface + monotonicNanos()
+$clock->now();                   // \DateTimeImmutable (wall)
+$clock->monotonicNanos();        // int (hrtime, for durations)
+```
