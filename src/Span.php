@@ -118,7 +118,7 @@ final class Span implements SpanInterface
             ? $this->clock->monotonicNanos() - $this->startMonotonicNanos
             : max(0, $this->wallNanos() - $this->startWallNanos);
 
-        if ($this->onEnd !== null) {
+        if ($this->onEnd instanceof \Closure) {
             ($this->onEnd)($this);
         }
     }
