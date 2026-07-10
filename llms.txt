@@ -21,7 +21,7 @@ bind `TracerProviderInterface => NullTracerProvider` in the app.
   `TracerProviderInterface` in core — one source owns it (backend or app), else
   `yiisoft/config` `Duplicate key`.
 - `trace()` contract is frozen at 1.0.0 (roave/bc-check). Do not add methods to
-  `SpanInterface`/`TracerInterface`.
+  `SpanInterface`/`TracerInterface` after the 1.0.0 tag.
 - `currentSpan()` is never `null` — a dropped/disabled span returns a
   non-recording span.
 - Two clocks, never mixed: `now()` (wall, PSR-20) vs `monotonicNanos()` (duration).
@@ -40,6 +40,7 @@ $value = $tracer->trace(
     attributes: ['user.id' => '7'],   // array<string, bool|int|float|string|array|null>
     scoped: true,                     // default true; span becomes currentSpan()
     traceKind: TraceKind::Internal,   // Internal|Client|Server|Producer|Consumer
+    startNanos: null,                 // backdate span start (unix-epoch ns); null = now
 );
 
 $tracer->currentSpan();  // SpanInterface, never null
@@ -61,6 +62,7 @@ startSpan() = trace() minus callback/scoped/auto-end; parent = active span.
 $span->setAttribute(string $key, bool|int|float|string|array|null $value): void;
 $span->updateName(string $name): void;
 $span->setStatus(SpanStatusCode $code, ?string $description = null): void;
+$span->addEvent(string $name, array $attributes = []): void; // timestamped OTel span event
 $span->recordException(\Throwable $e): void;
 $span->end(): void;               // idempotent
 $span->isRecording(): bool;       // false for NullSpan / after end
@@ -69,7 +71,8 @@ $span->getTraceContext(): TraceContext;
 
 The concrete `Span` (LogTracer) adds getters: `getName()`, `getKind()`,
 `getStatus(): SpanStatus` (value object: `code: SpanStatusCode`,
-`description: ?string`), `getAttributes()`, `getRecordedExceptions()`,
+`description: ?string`), `getAttributes()`, `getEvents(): list<SpanEvent>`
+(`name`, `attributes`, `wallNanos`), `getRecordedExceptions()`,
 `getDurationNanos()`, `hasEnded()`.
 
 ### Tracers / providers
@@ -109,6 +112,10 @@ use Rasuvaeff\Yii3Telemetry\TraceContextPropagator;
 $p = new TraceContextPropagator();
 $ctx = $p->extract($serverRequest);          // incoming ServerRequestInterface
 $req = $p->inject($ctx, $clientRequest);     // outgoing RequestInterface (+traceparent)
+
+// Carrier-agnostic (queues, AMQP, gRPC metadata) — plain header maps:
+$headers = $p->toHeaders($ctx);              // ['traceparent' => ..., 'tracestate'?]; [] if invalid
+$ctx = $p->fromHeaders($headers);            // case-insensitive names; invalid if absent
 ```
 
 ### Clock
@@ -128,7 +135,7 @@ use Rasuvaeff\Yii3Telemetry\{HttpClientSpanDecorator, TracingCacheDecorator, DbQ
 
 new HttpClientSpanDecorator($psr18Client, $tracer);   // PSR-18 → 'HTTP <method>' + traceparent inject
 new TracingCacheDecorator($psr16Cache, $tracer);      // PSR-16 → 'cache.<op>'
-$connection->setProfiler(new DbQueryProfiler($tracer)); // yiisoft/db → 'db.query' (parameterized SQL only)
+$connection->setProfiler(new DbQueryProfiler($tracer, dbSystem: 'postgresql')); // yiisoft/db → 'db.query' (parameterized SQL only; dbSystem default 'sql')
 // yiisoft/view PSR-14 (config/events.php):
 //   BeforeRender::class => [[ViewRenderSpanListener::class, 'beforeRender']]
 //   AfterRender::class  => [[ViewRenderSpanListener::class, 'afterRender']]
@@ -136,7 +143,8 @@ $connection->setProfiler(new DbQueryProfiler($tracer)); // yiisoft/db → 'db.qu
 
 - `yiisoft/db` / `yiisoft/view` are `suggest` (optional); their symbols are in
   `composer-require-checker.json`. Queue instrumentation is deferred
-  (`yiisoft/queue` has no stable release).
+  (`yiisoft/queue` has no stable release) — propagate through queues with
+  `toHeaders()`/`fromHeaders()` + `trace(traceKind: Consumer, startNanos: <enqueue ns>)`.
 - HTTP + cache use `trace()`; DB + view use `startSpan()` (split begin/end).
 
 ### Log correlation / trace id exposure

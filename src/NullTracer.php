@@ -37,6 +37,7 @@ final class NullTracer implements TracerInterface
         array $attributes = [],
         bool $scoped = true,
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): mixed {
         return $callback(NullSpan::instance());
     }
@@ -49,6 +50,7 @@ final class NullTracer implements TracerInterface
         string $name,
         array $attributes = [],
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): SpanInterface {
         return NullSpan::instance();
     }

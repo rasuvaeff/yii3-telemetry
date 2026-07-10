@@ -10,13 +10,16 @@ namespace Rasuvaeff\Yii3Telemetry;
  *
  * Duration is measured with the monotonic clock; the start timestamp is taken
  * from the wall clock — the two are never mixed (see {@see ClockInterface}).
+ * Exception: with an explicit `$startNanos` (a span that logically began in the
+ * past, e.g. when the worker received the request) no monotonic anchor exists,
+ * so the duration is wall-clock based and carries wall-clock precision.
  *
  * @api
  */
 final class Span implements SpanInterface
 {
     private readonly int $startWallNanos;
-    private readonly int $startMonotonicNanos;
+    private readonly ?int $startMonotonicNanos;
     private ?int $durationNanos = null;
     private bool $ended = false;
     private SpanStatus $status;
@@ -24,17 +27,32 @@ final class Span implements SpanInterface
     /** @var array<string, bool|int|float|string|array|null> */
     private array $attributes = [];
 
+    /** @var list<SpanEvent> */
+    private array $events = [];
+
     /** @var list<\Throwable> */
     private array $recordedExceptions = [];
 
+    /**
+     * @param int|null $startNanos explicit unix-epoch wall-clock start in
+     *        nanoseconds; `null` = now
+     * @param (\Closure(self): void)|null $onEnd invoked exactly once when the
+     *        span ends (used by {@see LogTracer} to log manually-started spans)
+     */
     public function __construct(
         private string $name,
         private readonly TraceContext $traceContext,
         private readonly TraceKind $kind,
         private readonly ClockInterface $clock,
+        ?int $startNanos = null,
+        private readonly ?\Closure $onEnd = null,
     ) {
-        $this->startWallNanos = (int) $this->clock->now()->format('Uu') * 1000;
-        $this->startMonotonicNanos = $this->clock->monotonicNanos();
+        if ($startNanos !== null && $startNanos < 0) {
+            throw new Exception\InvalidArgumentException(\sprintf('Start nanos must be non-negative, got %d', $startNanos));
+        }
+
+        $this->startWallNanos = $startNanos ?? $this->wallNanos();
+        $this->startMonotonicNanos = $startNanos === null ? $this->clock->monotonicNanos() : null;
         $this->status = SpanStatus::unset();
     }
 
@@ -69,6 +87,16 @@ final class Span implements SpanInterface
     }
 
     #[\Override]
+    public function addEvent(string $name, array $attributes = []): void
+    {
+        if ($this->ended) {
+            return;
+        }
+
+        $this->events[] = new SpanEvent($name, $attributes, $this->wallNanos());
+    }
+
+    #[\Override]
     public function recordException(\Throwable $exception): void
     {
         if ($this->ended) {
@@ -86,7 +114,13 @@ final class Span implements SpanInterface
         }
 
         $this->ended = true;
-        $this->durationNanos = $this->clock->monotonicNanos() - $this->startMonotonicNanos;
+        $this->durationNanos = $this->startMonotonicNanos !== null
+            ? $this->clock->monotonicNanos() - $this->startMonotonicNanos
+            : max(0, $this->wallNanos() - $this->startWallNanos);
+
+        if ($this->onEnd !== null) {
+            ($this->onEnd)($this);
+        }
     }
 
     #[\Override]
@@ -125,6 +159,14 @@ final class Span implements SpanInterface
     }
 
     /**
+     * @return list<SpanEvent>
+     */
+    public function getEvents(): array
+    {
+        return $this->events;
+    }
+
+    /**
      * @return list<\Throwable>
      */
     public function getRecordedExceptions(): array
@@ -148,5 +190,10 @@ final class Span implements SpanInterface
     public function hasEnded(): bool
     {
         return $this->ended;
+    }
+
+    private function wallNanos(): int
+    {
+        return (int) $this->clock->now()->format('Uu') * 1000;
     }
 }

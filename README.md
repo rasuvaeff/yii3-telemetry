@@ -66,6 +66,7 @@ The callback receives the active `SpanInterface` and its return value becomes th
 | `scoped: true` (default) | span is `currentSpan()` during the callback; the previous span is restored after |
 | nested `trace()` | the child inherits the parent's `traceId`, gets its own `spanId` |
 | span dropped / tracing disabled | callback still runs; `currentSpan()` returns a **non-recording** span, never `null` |
+| `startNanos: <int>` | backdates the span start (unix-epoch nanoseconds) for work that logically began earlier — a worker receive timestamp, a queue enqueue time; `null` (default) = now |
 
 `end()` is idempotent.
 
@@ -78,6 +79,7 @@ The callback receives the active `SpanInterface` and its return value becomes th
 | `setAttribute(string $key, bool\|int\|float\|string\|array\|null $value)` | attach a key/value |
 | `updateName(string $name)` | rename the span |
 | `setStatus(SpanStatusCode $code, ?string $description = null)` | set status |
+| `addEvent(string $name, array $attributes = [])` | record a timestamped point-in-time annotation (an OTel span event: `retry`, `cache.miss`, …) |
 | `recordException(\Throwable $e)` | record an exception |
 | `end()` | finish (idempotent) |
 | `isRecording()` | `false` for non-recording spans |
@@ -86,7 +88,8 @@ The callback receives the active `SpanInterface` and its return value becomes th
 The concrete `Span` (recorded by `LogTracer`) additionally exposes getters:
 `getName()`, `getKind()`, `getStatus(): SpanStatus` (a value object pairing a
 `SpanStatusCode` with an optional description), `getAttributes()`,
-`getRecordedExceptions()`, `getDurationNanos()`, `hasEnded()`.
+`getEvents(): list<SpanEvent>`, `getRecordedExceptions()`, `getDurationNanos()`,
+`hasEnded()`.
 
 ### Tracers
 
@@ -118,6 +121,25 @@ $request = $propagator->inject($context, $clientRequest);
 
 `extract` reads a `ServerRequestInterface`; `inject` writes an outgoing
 `RequestInterface`. A missing/malformed header yields `TraceContext::invalid()`.
+
+For non-HTTP transports use the carrier-agnostic pair — a plain header map you
+can put into any envelope (queue message, AMQP header table, gRPC metadata):
+
+```php
+// Producer: attach the current context to the message envelope.
+$envelope['headers'] = $propagator->toHeaders($tracer->getContext());
+
+// Consumer: restore it and open a Consumer span.
+$context = $propagator->fromHeaders($message['headers'] ?? []);
+```
+
+`fromHeaders` matches names case-insensitively; an invalid context yields an
+empty map from `toHeaders`, so the round trip is always safe.
+
+> **Queue instrumentation roadmap.** A ready-made `yiisoft/queue` middleware
+> (Producer inject + Consumer span) is deferred until `yiisoft/queue` has a
+> stable release — the carrier API above is the supported way to propagate a
+> trace through any queue today.
 
 ### Clock
 
@@ -170,8 +192,8 @@ $client = new HttpClientSpanDecorator($innerClient, $tracer);
 // Cache (PSR-16)
 $cache = new TracingCacheDecorator($innerCache, $tracer);
 
-// DB (yiisoft/db)
-$connection->setProfiler(new DbQueryProfiler($tracer));
+// DB (yiisoft/db) — pass the semconv db.system for your driver (default 'sql')
+$connection->setProfiler(new DbQueryProfiler($tracer, dbSystem: 'postgresql'));
 
 // View (yiisoft/view) — register in config/events.php
 BeforeRender::class => [[ViewRenderSpanListener::class, 'beforeRender']],

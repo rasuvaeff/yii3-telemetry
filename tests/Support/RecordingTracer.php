@@ -46,6 +46,7 @@ final class RecordingTracer implements TracerInterface
         array $attributes = [],
         bool $scoped = true,
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): mixed {
         $span = $this->make($name, $attributes, $traceKind);
 
@@ -77,6 +78,7 @@ final class RecordingTracer implements TracerInterface
         string $name,
         array $attributes = [],
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): SpanInterface {
         return $this->make($name, $attributes, $traceKind);
     }

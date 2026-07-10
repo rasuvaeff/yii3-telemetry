@@ -32,6 +32,9 @@ final class NullSpan implements SpanInterface
     public function setStatus(SpanStatusCode $code, ?string $description = null): void {}
 
     #[\Override]
+    public function addEvent(string $name, array $attributes = []): void {}
+
+    #[\Override]
     public function recordException(\Throwable $exception): void {}
 
     #[\Override]

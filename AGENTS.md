@@ -59,9 +59,13 @@ intentional (mirrors `yiisoft/cache`).
    - a dropped/disabled span still runs the callback; `currentSpan()` then returns
      a non-recording span, **never `null`**. `end()` is idempotent.
    `TracerInterface` also has `startSpan()` — a manual recording span (NOT
-   activated; the caller ends it) for split begin/end instrumentation. On success
-   a span keeps status Unset (never auto-`Ok`). Do not add further methods to
-   `SpanInterface`/`TracerInterface` — every impl (Null/Log/Otel) must stay in sync.
+   activated; the caller ends it) for split begin/end instrumentation. Both
+   `trace()` and `startSpan()` accept `?int $startNanos` (backdate the span
+   start; with an explicit start the core `Span` duration is wall-clock based).
+   `SpanInterface` includes `addEvent(name, attributes)` (timestamped OTel span
+   events). On success a span keeps status Unset (never auto-`Ok`). Do not add
+   further methods to `SpanInterface`/`TracerInterface` after the 1.0.0 tag —
+   every impl (Null/Log/Otel + third-party) must stay in sync.
 4. **Preserve the public contract.** Update README + tests with any API change.
 
 ## Commands
@@ -92,7 +96,10 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
   requires non-zero ids (W3C).
 - `TraceContextPropagator`: `extract` reads `traceparent` from an incoming
   `ServerRequestInterface`; `inject` writes it onto an outgoing `RequestInterface`
-  (never a response). Malformed / `ff`-version / all-zero → invalid.
+  (never a response). `toHeaders`/`fromHeaders` are the carrier-agnostic pair for
+  non-HTTP transports (queues). Malformed / `ff`-version / all-zero → invalid;
+  future traceparent versions are parsed from their first four fields (W3C),
+  version `00` requires exactly four.
 - `config/di.php` and `config/params.php` are outside the cs/psalm/testo gate.
   `ConfigWiringTest` guards them (facade keys present, `TracerProviderInterface`
   absent, no-op resolution). Verify wiring changes there, not via the build gate.
@@ -115,6 +122,9 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
   all (safer than masking). If added later, they must be opt-in, off by default.
 - **Queue instrumentation is deferred**: `yiisoft/queue` has no stable release
   (dev-master only); do NOT add `minimum-stability: dev` to this core for it.
+  The supported path today is documented in the README: propagate with
+  `toHeaders()`/`fromHeaders()` and open a Consumer span with
+  `trace(traceKind: Consumer, startNanos: <enqueue time>)`.
 - Code: `declare(strict_types=1)`, `final readonly class` (or `final class` when
   a static/singleton or mutable state is needed), `#[\Override]`, explicit types.
 - **CI workflows are SHA-pinned.** Every `uses:` in `.github/workflows/*.yml`

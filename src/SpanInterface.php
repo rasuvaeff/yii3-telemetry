@@ -20,6 +20,14 @@ interface SpanInterface
 
     public function setStatus(SpanStatusCode $code, ?string $description = null): void;
 
+    /**
+     * Records a timestamped point-in-time annotation (an OTel span event), e.g.
+     * "retry", "cache.miss". Non-recording spans ignore it.
+     *
+     * @param array<string, bool|int|float|string|array|null> $attributes
+     */
+    public function addEvent(string $name, array $attributes = []): void;
+
     public function recordException(\Throwable $exception): void;
 
     /**

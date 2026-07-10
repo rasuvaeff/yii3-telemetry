@@ -8,13 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 1.0.0 — Unreleased
 
 - Tracing core: `Tracer` facade with the frozen `trace(name, callback, attributes,
-  scoped, traceKind)` contract; `TracerInterface`, `TracerProviderInterface`.
+  scoped, traceKind, startNanos)` contract; `TracerInterface`,
+  `TracerProviderInterface`. `startNanos` backdates a span (worker receive time,
+  queue enqueue time).
 - Tracers: `NullTracer` / `NullTracerProvider` (no-op) and `LogTracer` (PSR-3 dev
   tracer with an active-span stack and W3C id generation).
-- Span model: `SpanInterface`, mutable `Span`, non-recording `NullSpan`,
-  `TraceKind`, `SpanStatus` / `SpanStatusCode` — mirroring `open-telemetry/api`.
+- Span model: `SpanInterface` (incl. `addEvent()` — timestamped OTel span
+  events), mutable `Span` (+ `SpanEvent`), non-recording `NullSpan`, `TraceKind`,
+  `SpanStatus` / `SpanStatusCode` — mirroring `open-telemetry/api`.
 - `TraceContext` (W3C) with validation and `TraceContextPropagator`
-  (extract from incoming server request, inject into outgoing client request).
+  (extract from incoming server request, inject into outgoing client request;
+  carrier-agnostic `toHeaders()`/`fromHeaders()` for queues and other non-HTTP
+  transports; future traceparent versions parsed per W3C).
 - `ClockInterface` (extends PSR-20) and `SystemClock` (wall + monotonic clocks).
 - `TracerInterface::startSpan()` — a manual recording span (not activated; caller
   ends it) for split begin/end instrumentation.

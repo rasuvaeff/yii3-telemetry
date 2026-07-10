@@ -109,11 +109,80 @@ final class SpanTest
         $span->setAttribute('a', 1);
         $span->updateName('x');
         $span->setStatus(SpanStatusCode::Error, 'e');
+        $span->addEvent('retry', ['attempt' => 1]);
         $span->recordException(new \RuntimeException('x'));
         $span->end();
 
         Assert::false($span->isRecording());
         Assert::false($span->getTraceContext()->isValid());
+    }
+
+    public function addEventRecordsTimestampedEvent(): void
+    {
+        $clock = new QueueClock(new \DateTimeImmutable('@3'), 1, 2);
+        $span = new Span('op', $this->context(), TraceKind::Internal, $clock);
+
+        $span->addEvent('retry', ['attempt' => 2]);
+
+        Assert::count($span->getEvents(), 1);
+        Assert::same($span->getEvents()[0]->name, 'retry');
+        Assert::same($span->getEvents()[0]->attributes, ['attempt' => 2]);
+        Assert::same($span->getEvents()[0]->wallNanos, 3_000_000_000);
+    }
+
+    public function addEventIsNoOpAfterEnd(): void
+    {
+        $span = $this->span();
+        $span->addEvent('before');
+        $span->end();
+
+        $span->addEvent('after');
+
+        Assert::count($span->getEvents(), 1);
+        Assert::same($span->getEvents()[0]->name, 'before');
+    }
+
+    public function explicitStartNanosBackdatesAndUsesWallClockDuration(): void
+    {
+        $clock = new QueueClock(new \DateTimeImmutable('@2'));
+        $span = new Span('op', $this->context(), TraceKind::Internal, $clock, startNanos: 500_000_000);
+
+        Assert::same($span->getStartWallNanos(), 500_000_000);
+
+        $span->end();
+
+        Assert::same($span->getDurationNanos(), 1_500_000_000);
+    }
+
+    public function negativeStartNanosThrows(): void
+    {
+        try {
+            new Span('op', $this->context(), TraceKind::Internal, new QueueClock(new \DateTimeImmutable('@0')), startNanos: -1);
+            Assert::fail('expected an InvalidArgumentException');
+        } catch (\Rasuvaeff\Yii3Telemetry\Exception\InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('non-negative');
+        }
+    }
+
+    public function onEndCallbackFiresExactlyOnce(): void
+    {
+        $calls = 0;
+        $span = new Span(
+            'op',
+            $this->context(),
+            TraceKind::Internal,
+            new QueueClock(new \DateTimeImmutable('@0'), 1, 2),
+            null,
+            static function (Span $ended) use (&$calls): void {
+                ++$calls;
+                Assert::true($ended->hasEnded());
+            },
+        );
+
+        $span->end();
+        $span->end();
+
+        Assert::same($calls, 1);
     }
 
     #[Property(runs: 200)]

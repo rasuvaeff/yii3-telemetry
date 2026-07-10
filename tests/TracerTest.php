@@ -185,6 +185,58 @@ final class TracerTest
         Assert::false($span->isRecording());
     }
 
+    public function logTracerLogsManuallyStartedSpanWhenItEnds(): void
+    {
+        $logger = new RecordingLogger();
+        $tracer = new LogTracer($logger, new QueueClock(new \DateTimeImmutable('@0'), 1, 2));
+
+        $span = $tracer->startSpan('db.query', ['db.system' => 'sqlite'], TraceKind::Client);
+
+        Assert::count($logger->records, 0);
+
+        $span->end();
+
+        Assert::count($logger->records, 1);
+        Assert::same($logger->records[0]['message'], 'span db.query');
+        Assert::same($logger->records[0]['context']['kind'], 'Client');
+    }
+
+    public function traceLogsExactlyOnceDespiteIdempotentEnd(): void
+    {
+        $logger = new RecordingLogger();
+        $tracer = new LogTracer($logger, new QueueClock(new \DateTimeImmutable('@0'), 1, 2));
+
+        $tracer->trace('op', static function (SpanInterface $span): void {
+            $span->end();
+        });
+
+        Assert::count($logger->records, 1);
+    }
+
+    public function traceWithStartNanosBackdatesTheSpan(): void
+    {
+        $logger = new RecordingLogger();
+        $tracer = new LogTracer($logger, new QueueClock(new \DateTimeImmutable('@1')));
+
+        $tracer->trace('op', static fn(): null => null, startNanos: 400_000_000);
+
+        Assert::count($logger->records, 1);
+        Assert::same($logger->records[0]['context']['duration_ns'], 600_000_000);
+    }
+
+    public function loggedSpanIncludesEventNames(): void
+    {
+        $logger = new RecordingLogger();
+        $tracer = new LogTracer($logger, new QueueClock(new \DateTimeImmutable('@0'), 1, 2));
+
+        $tracer->trace('op', static function (SpanInterface $span): void {
+            $span->addEvent('retry', ['attempt' => 1]);
+            $span->addEvent('cache.miss');
+        });
+
+        Assert::same($logger->records[0]['context']['events'], ['retry', 'cache.miss']);
+    }
+
     public function nullTracerStartSpanIsNonRecording(): void
     {
         Assert::false(NullTracer::instance()->startSpan('x')->isRecording());

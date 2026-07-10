@@ -105,4 +105,15 @@ final class DbQueryProfilerTest
 
         Assert::count($this->tracer->spans, 0);
     }
+
+    public function explicitDbSystemOverridesGenericSql(): void
+    {
+        $profiler = new DbQueryProfiler($this->tracer, dbSystem: 'postgresql');
+        $context = new CommandContext('query', 'ctx', 'SELECT 1', []);
+
+        $profiler->begin('SELECT 1', $context);
+        $profiler->end('SELECT 1', $context);
+
+        Assert::same($this->tracer->spans[0]->getAttributes()['db.system'], 'postgresql');
+    }
 }

@@ -76,6 +76,19 @@ final class TraceContextPropagatorTest
         yield 'zero span id' => ['00-0af7651916cd43dd8448eb211c80319c-0000000000000000-01'];
         yield 'forbidden ff version' => ['ff-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'];
         yield 'non-hex flags' => ['00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-zz'];
+        yield 'version 00 with extra fields' => ['00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra'];
+    }
+
+    public function futureVersionWithExtraFieldsIsAccepted(): void
+    {
+        $request = $this->factory->createServerRequest('GET', '/')
+            ->withHeader('traceparent', '01-' . self::TRACE_ID . '-' . self::SPAN_ID . '-01-future-field');
+
+        $context = $this->propagator->extract($request);
+
+        Assert::true($context->isValid());
+        Assert::same($context->traceId, self::TRACE_ID);
+        Assert::same($context->spanId, self::SPAN_ID);
     }
 
     public function injectsTraceparentWithoutStateByDefault(): void
@@ -117,6 +130,49 @@ final class TraceContextPropagatorTest
 
         Assert::false($result->hasHeader('traceparent'));
         Assert::same($result, $request);
+    }
+
+    public function toHeadersCarriesTraceparentAndOptionalState(): void
+    {
+        $bare = $this->propagator->toHeaders(new TraceContext(self::TRACE_ID, self::SPAN_ID, 1));
+        Assert::same($bare, ['traceparent' => self::TRACEPARENT]);
+
+        $withState = $this->propagator->toHeaders(new TraceContext(self::TRACE_ID, self::SPAN_ID, 1, 'vendor=value'));
+        Assert::same($withState, ['traceparent' => self::TRACEPARENT, 'tracestate' => 'vendor=value']);
+
+        Assert::same($this->propagator->toHeaders(TraceContext::invalid()), []);
+    }
+
+    public function fromHeadersReversesToHeaders(): void
+    {
+        $context = new TraceContext(self::TRACE_ID, self::SPAN_ID, 1, 'vendor=value');
+
+        Assert::true($this->propagator->fromHeaders($this->propagator->toHeaders($context))->equals($context));
+    }
+
+    public function fromHeadersMatchesNamesCaseInsensitively(): void
+    {
+        $context = $this->propagator->fromHeaders([
+            'TraceParent' => self::TRACEPARENT,
+            'TRACESTATE' => 'vendor=value',
+        ]);
+
+        Assert::true($context->isValid());
+        Assert::same($context->traceState, 'vendor=value');
+    }
+
+    public function fromHeadersTreatsDuplicateTraceparentAsInvalid(): void
+    {
+        $context = $this->propagator->fromHeaders([
+            'traceparent' => [self::TRACEPARENT, self::TRACEPARENT],
+        ]);
+
+        Assert::false($context->isValid());
+    }
+
+    public function fromHeadersReturnsInvalidWhenAbsent(): void
+    {
+        Assert::false($this->propagator->fromHeaders([])->isValid());
     }
 
     #[Property(runs: 300)]

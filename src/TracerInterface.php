@@ -16,7 +16,10 @@ namespace Rasuvaeff\Yii3Telemetry;
  *   duration and the previous span is restored afterwards;
  * - a nested `trace()` inherits the parent's `traceId`;
  * - a dropped/disabled span still runs the callback with a non-recording span;
- *   {@see currentSpan()} then returns that non-recording span, never `null`.
+ *   {@see currentSpan()} then returns that non-recording span, never `null`;
+ * - `$startNanos` backdates the span start (unix-epoch wall-clock nanoseconds)
+ *   for work that logically began earlier — e.g. when a long-running worker
+ *   received the request, or when a queue message was enqueued. `null` = now.
  *
  * @api
  */
@@ -27,6 +30,7 @@ interface TracerInterface
      *
      * @param callable(SpanInterface): T $callback
      * @param array<string, bool|int|float|string|array|null> $attributes
+     * @param int|null $startNanos explicit span start (unix-epoch nanoseconds); `null` = now
      *
      * @return T
      */
@@ -36,6 +40,7 @@ interface TracerInterface
         array $attributes = [],
         bool $scoped = true,
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): mixed;
 
     /**
@@ -48,11 +53,13 @@ interface TracerInterface
      * render listener) whose two halves cannot be wrapped in a single callback.
      *
      * @param array<string, bool|int|float|string|array|null> $attributes
+     * @param int|null $startNanos explicit span start (unix-epoch nanoseconds); `null` = now
      */
     public function startSpan(
         string $name,
         array $attributes = [],
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): SpanInterface;
 
     /**

@@ -36,8 +36,9 @@ final readonly class Tracer implements TracerInterface
         array $attributes = [],
         bool $scoped = true,
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): mixed {
-        return $this->tracer->trace($name, $callback, $attributes, $scoped, $traceKind);
+        return $this->tracer->trace($name, $callback, $attributes, $scoped, $traceKind, $startNanos);
     }
 
     /**
@@ -48,8 +49,9 @@ final readonly class Tracer implements TracerInterface
         string $name,
         array $attributes = [],
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): SpanInterface {
-        return $this->tracer->startSpan($name, $attributes, $traceKind);
+        return $this->tracer->startSpan($name, $attributes, $traceKind, $startNanos);
     }
 
     #[\Override]

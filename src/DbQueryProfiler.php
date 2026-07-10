@@ -15,6 +15,10 @@ use Yiisoft\Db\Profiler\ProfilerInterface;
  * from the profiler context — parameter values are never attached. Nested
  * begin/end pairs (connection then query) are tracked as a LIFO stack.
  *
+ * The profiler context does not expose the driver, so pass the OTel semconv
+ * `db.system` value for your connection (`mysql`, `postgresql`, `sqlite`, …)
+ * explicitly; the default is the generic `sql`.
+ *
  * @api
  */
 final class DbQueryProfiler implements ProfilerInterface
@@ -24,6 +28,7 @@ final class DbQueryProfiler implements ProfilerInterface
 
     public function __construct(
         private readonly TracerInterface $tracer,
+        private readonly string $dbSystem = 'sql',
     ) {}
 
     #[\Override]
@@ -70,7 +75,7 @@ final class DbQueryProfiler implements ProfilerInterface
             return ['db.query', $this->queryAttributes($data['sql']), TraceKind::Client];
         }
 
-        return ['db.' . $context->getType(), ['db.system' => 'sql'], TraceKind::Client];
+        return ['db.' . $context->getType(), ['db.system' => $this->dbSystem], TraceKind::Client];
     }
 
     /**
@@ -79,7 +84,7 @@ final class DbQueryProfiler implements ProfilerInterface
     private function queryAttributes(string $sql): array
     {
         return [
-            'db.system' => 'sql',
+            'db.system' => $this->dbSystem,
             'db.statement' => $sql,
             'db.operation' => $this->operation($sql),
         ];

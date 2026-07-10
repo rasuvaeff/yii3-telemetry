@@ -42,8 +42,9 @@ final class LogTracer implements TracerInterface
         array $attributes = [],
         bool $scoped = true,
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): mixed {
-        $span = $this->createSpan($name, $attributes, $traceKind);
+        $span = $this->createSpan($name, $attributes, $traceKind, $startNanos);
 
         if ($scoped) {
             $this->spanStack[] = $span;
@@ -58,7 +59,6 @@ final class LogTracer implements TracerInterface
             throw $exception;
         } finally {
             $span->end();
-            $this->logSpan($span);
 
             if ($scoped) {
                 array_pop($this->spanStack);
@@ -67,9 +67,10 @@ final class LogTracer implements TracerInterface
     }
 
     /**
-     * Creates a detached recording span (not activated, not logged until the
-     * caller ends it — a {@see LogTracer} only logs spans it manages in
-     * {@see trace()}).
+     * Creates a detached recording span (not activated). Like every
+     * {@see LogTracer} span it is logged when it ends — the caller's
+     * {@see SpanInterface::end()} triggers the log record, so split begin/end
+     * instrumentation (DB profiler, view listener) shows up too.
      *
      * @param array<string, bool|int|float|string|array|null> $attributes
      */
@@ -78,8 +79,9 @@ final class LogTracer implements TracerInterface
         string $name,
         array $attributes = [],
         TraceKind $traceKind = TraceKind::Internal,
+        ?int $startNanos = null,
     ): SpanInterface {
-        return $this->createSpan($name, $attributes, $traceKind);
+        return $this->createSpan($name, $attributes, $traceKind, $startNanos);
     }
 
     #[\Override]
@@ -101,9 +103,16 @@ final class LogTracer implements TracerInterface
     /**
      * @param array<string, bool|int|float|string|array|null> $attributes
      */
-    private function createSpan(string $name, array $attributes, TraceKind $kind): Span
+    private function createSpan(string $name, array $attributes, TraceKind $kind, ?int $startNanos): Span
     {
-        $span = new Span($name, $this->childContext(), $kind, $this->clock);
+        $span = new Span(
+            $name,
+            $this->childContext(),
+            $kind,
+            $this->clock,
+            $startNanos,
+            fn(Span $ended) => $this->logSpan($ended),
+        );
 
         foreach ($attributes as $key => $value) {
             $span->setAttribute($key, $value);
@@ -154,6 +163,10 @@ final class LogTracer implements TracerInterface
             'status' => $span->getStatus()->code->value,
             'duration_ns' => $span->getDurationNanos(),
             'attributes' => $span->getAttributes(),
+            'events' => array_map(
+                static fn(SpanEvent $event): string => $event->name,
+                $span->getEvents(),
+            ),
             'exceptions' => array_map(
                 static fn(\Throwable $e): string => $e::class . ': ' . $e->getMessage(),
                 $span->getRecordedExceptions(),
