@@ -7,6 +7,7 @@
 [![Psalm Level](https://shepherd.dev/github/rasuvaeff/yii3-telemetry/level.svg)](https://shepherd.dev/github/rasuvaeff/yii3-telemetry)
 [![PHP](https://img.shields.io/packagist/dependency-v/rasuvaeff/yii3-telemetry/php)](https://packagist.org/packages/rasuvaeff/yii3-telemetry)
 [![License](https://img.shields.io/packagist/l/rasuvaeff/yii3-telemetry.svg)](https://github.com/rasuvaeff/yii3-telemetry/blob/master/LICENSE.md)
+[Русская версия](README.ru.md)
 
 Vendor-neutral tracing core for Yii3. One ergonomic call — `trace(name, callback)`
 — opens a span, runs your code, and closes the span, instead of the verbose
