@@ -188,7 +188,7 @@ final class TraceContextPropagatorTest
     }
 
     /** @return array<string, ArbitraryInterface> */
-    private function extractReversesInjectGenerators(): array
+    public static function extractReversesInjectGenerators(): array
     {
         return [
             'traceId' => Gen::map(

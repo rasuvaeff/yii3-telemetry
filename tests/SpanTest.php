@@ -197,7 +197,7 @@ final class SpanTest
     }
 
     /** @return array<string, ArbitraryInterface> */
-    private function durationEqualsMonotonicDeltaGenerators(): array
+    public static function durationEqualsMonotonicDeltaGenerators(): array
     {
         return [
             'start' => Gen::intBetween(0, 1_000_000_000),
@@ -215,7 +215,7 @@ final class SpanTest
     }
 
     /** @return array<string, ArbitraryInterface> */
-    private function attributeRoundTripsGenerators(): array
+    public static function attributeRoundTripsGenerators(): array
     {
         return [
             'key' => Gen::stringAscii(),
