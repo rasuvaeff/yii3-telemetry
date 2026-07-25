@@ -88,8 +88,10 @@ final class TraceContextTest
     {
         yield 'short trace id' => ['abc', self::SPAN_ID, 1, 'Invalid trace id'];
         yield 'uppercase trace id' => [strtoupper(self::TRACE_ID), self::SPAN_ID, 1, 'Invalid trace id'];
+        yield 'trace id trailing newline' => [self::TRACE_ID . "\n", self::SPAN_ID, 1, 'Invalid trace id'];
         yield 'short span id' => [self::TRACE_ID, 'abc', 1, 'Invalid span id'];
         yield 'non-hex span id' => [self::TRACE_ID, 'zzzzzzzzzzzzzzzz', 1, 'Invalid span id'];
+        yield 'span id trailing newline' => [self::TRACE_ID, self::SPAN_ID . "\n", 1, 'Invalid span id'];
         yield 'flags too high' => [self::TRACE_ID, self::SPAN_ID, 256, 'Trace flags out of range'];
         yield 'flags negative' => [self::TRACE_ID, self::SPAN_ID, -1, 'Trace flags out of range'];
     }

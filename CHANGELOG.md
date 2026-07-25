@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.1 — 2026-07-25
+
+- Reject trailing newlines in W3C trace/span id and flag patterns: anchor with
+  `\z` instead of `$` in `TraceContext` and `TraceContextPropagator` (PCRE `$`
+  matches before a trailing `\n`, which let a smuggled `"<hex>\n"` field pass
+  format validation).
+
 ## 1.1.0 — 2026-07-25
 
 - Ship an AI agent skill (`resources/skills/rasuvaeff-yii3-telemetry/SKILL.md` +

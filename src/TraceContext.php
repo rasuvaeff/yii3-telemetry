@@ -17,8 +17,8 @@ use Rasuvaeff\Yii3Telemetry\Exception\InvalidArgumentException;
  */
 final readonly class TraceContext
 {
-    private const string TRACE_ID_PATTERN = '/^[0-9a-f]{32}$/';
-    private const string SPAN_ID_PATTERN = '/^[0-9a-f]{16}$/';
+    private const string TRACE_ID_PATTERN = '/^[0-9a-f]{32}\z/';
+    private const string SPAN_ID_PATTERN = '/^[0-9a-f]{16}\z/';
     private const string INVALID_TRACE_ID = '00000000000000000000000000000000';
     private const string INVALID_SPAN_ID = '0000000000000000';
     private const int FLAG_SAMPLED = 0x01;
