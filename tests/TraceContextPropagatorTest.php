@@ -175,6 +175,18 @@ final class TraceContextPropagatorTest
         Assert::false($this->propagator->fromHeaders([])->isValid());
     }
 
+    public function fromHeadersRejectsTraceIdWithTrailingNewline(): void
+    {
+        // PSR-7 rejects LF in header values upstream of extract(); for non-HTTP
+        // carriers (queue messages, AMQP, gRPC metadata) a smuggled `\n` reaches
+        // the pattern directly, and `\z` is what stops it becoming a trace id.
+        $context = $this->propagator->fromHeaders([
+            'traceparent' => '00-' . self::TRACE_ID . "\n" . '-' . self::SPAN_ID . '-01',
+        ]);
+
+        Assert::false($context->isValid());
+    }
+
     #[Property(runs: 300)]
     public function extractReversesInject(string $traceId, string $spanId, int $flags): void
     {

@@ -34,10 +34,10 @@ final readonly class TraceContextPropagator
     private const string TRACEPARENT = 'traceparent';
     private const string TRACESTATE = 'tracestate';
     private const string VERSION = '00';
-    private const string VERSION_PATTERN = '/^[0-9a-f]{2}$/';
-    private const string TRACE_ID_PATTERN = '/^[0-9a-f]{32}$/';
-    private const string SPAN_ID_PATTERN = '/^[0-9a-f]{16}$/';
-    private const string FLAGS_PATTERN = '/^[0-9a-f]{2}$/';
+    private const string VERSION_PATTERN = '/^[0-9a-f]{2}\z/';
+    private const string TRACE_ID_PATTERN = '/^[0-9a-f]{32}\z/';
+    private const string SPAN_ID_PATTERN = '/^[0-9a-f]{16}\z/';
+    private const string FLAGS_PATTERN = '/^[0-9a-f]{2}\z/';
     private const string INVALID_VERSION = 'ff';
 
     public function extract(ServerRequestInterface $request): TraceContext
