@@ -7,8 +7,10 @@ namespace Rasuvaeff\Yii3Telemetry\Tests;
 use Rasuvaeff\PropertyTesting\ArbitraryInterface;
 use Rasuvaeff\PropertyTesting\Gen;
 use Rasuvaeff\PropertyTesting\Property;
+use Rasuvaeff\Yii3Telemetry\Exception\InvalidArgumentException;
 use Rasuvaeff\Yii3Telemetry\NullSpan;
 use Rasuvaeff\Yii3Telemetry\Span;
+use Rasuvaeff\Yii3Telemetry\SpanEvent;
 use Rasuvaeff\Yii3Telemetry\SpanStatusCode;
 use Rasuvaeff\Yii3Telemetry\Tests\Support\QueueClock;
 use Rasuvaeff\Yii3Telemetry\TraceContext;
@@ -20,6 +22,8 @@ use Testo\Test;
 #[Test]
 #[Covers(Span::class)]
 #[Covers(NullSpan::class)]
+#[Covers(SpanEvent::class)]
+#[Covers(InvalidArgumentException::class)]
 final class SpanTest
 {
     private const string TRACE_ID = '0af7651916cd43dd8448eb211c80319c';
@@ -162,6 +166,23 @@ final class SpanTest
         } catch (\Rasuvaeff\Yii3Telemetry\Exception\InvalidArgumentException $e) {
             Assert::string($e->getMessage())->contains('non-negative');
         }
+    }
+
+    public function zeroStartNanosIsAccepted(): void
+    {
+        $span = new Span('op', $this->context(), TraceKind::Internal, new QueueClock(new \DateTimeImmutable('@0')), startNanos: 0);
+
+        Assert::same($span->getStartWallNanos(), 0);
+    }
+
+    public function explicitFutureStartNanosClampsDurationToZero(): void
+    {
+        $clock = new QueueClock(new \DateTimeImmutable('@2'));
+        $span = new Span('op', $this->context(), TraceKind::Internal, $clock, startNanos: 3_000_000_000);
+
+        $span->end();
+
+        Assert::same($span->getDurationNanos(), 0);
     }
 
     public function onEndCallbackFiresExactlyOnce(): void

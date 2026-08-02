@@ -77,6 +77,23 @@ final class TraceContextPropagatorTest
         yield 'forbidden ff version' => ['ff-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'];
         yield 'non-hex flags' => ['00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-zz'];
         yield 'version 00 with extra fields' => ['00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra'];
+        // Exactly 3 parts (< 4) with a non-"00" version and well-formed
+        // trace/span ids: parse() must return early on the part-count check
+        // before the list-assignment leaves $flags null and reaches
+        // preg_match(FLAGS_PATTERN, null), which would TypeError under strict_types.
+        yield 'three parts, well-formed prefix' => ['01-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331'];
+    }
+
+    public function extractIgnoresTracestateWhenTraceparentInvalid(): void
+    {
+        $request = $this->factory->createServerRequest('GET', '/')
+            ->withHeader('traceparent', '')
+            ->withHeader('tracestate', 'vendor=value');
+
+        $context = $this->propagator->extract($request);
+
+        Assert::false($context->isValid());
+        Assert::same($context->traceState, '');
     }
 
     public function futureVersionWithExtraFieldsIsAccepted(): void

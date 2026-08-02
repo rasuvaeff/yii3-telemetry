@@ -75,6 +75,24 @@ final class HttpClientSpanDecoratorTest
         Assert::same($span->getStatus()->description, 'HTTP 500');
     }
 
+    public function statusExactlyFourHundredIsAnError(): void
+    {
+        $decorator = new HttpClientSpanDecorator($this->client(400), $this->tracer);
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://api.example/x'));
+
+        Assert::same($this->tracer->spans[0]->getStatus()->code, SpanStatusCode::Error);
+    }
+
+    public function statusJustBelowFourHundredIsNotAnError(): void
+    {
+        $decorator = new HttpClientSpanDecorator($this->client(399), $this->tracer);
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://api.example/x'));
+
+        Assert::same($this->tracer->spans[0]->getStatus()->code, SpanStatusCode::Unset);
+    }
+
     /**
      * @return ClientInterface&object{captured: ?RequestInterface}
      */

@@ -8,6 +8,15 @@
         "summary": "build/infection-summary.log"
     },
     "testFramework": "testo",
+    // Achieved MSI is 99% (214/215 killed, Not Covered: 0) as of the ER-003
+    // attribution sweep. The one survivor is a genuine equivalent, not
+    // lowering minMsi for it: Span.php:197 CastInt, `(int) $this->clock->
+    // now()->format('Uu') * 1000` -> the cast dropped. `format('Uu')` always
+    // returns a numeric string; PHP arithmetic on it already yields int for
+    // every timestamp until year ~292471 (int overflow only past
+    // PHP_INT_MAX), so the explicit cast is psalm-facing only, not a
+    // behavioral difference a test can observe. minMsi is left at the
+    // pre-existing 85, not raised — untouched by this sweep.
     "minMsi": 85,
     "mutators": {
         "@default": true

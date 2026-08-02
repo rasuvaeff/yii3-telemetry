@@ -41,6 +41,11 @@ final class TracerTest
         Assert::false($tracer->getContext()->isValid());
     }
 
+    public function nullTracerIsAnInertSingleton(): void
+    {
+        Assert::same(NullTracer::instance(), NullTracer::instance());
+    }
+
     public function nullTracerRethrowsCallbackException(): void
     {
         try {
@@ -73,10 +78,15 @@ final class TracerTest
         $logger = new RecordingLogger();
         $tracer = new LogTracer($logger, new QueueClock(new \DateTimeImmutable('@0'), 1, 2));
 
+        $traceId = null;
+        $spanId = null;
+
         $result = $tracer->trace(
             'checkout',
-            static function (SpanInterface $span): string {
+            static function (SpanInterface $span) use (&$traceId, &$spanId): string {
                 $span->setAttribute('user', 'u1');
+                $traceId = $span->getTraceContext()->traceId;
+                $spanId = $span->getTraceContext()->spanId;
 
                 return 'done';
             },
@@ -88,6 +98,8 @@ final class TracerTest
 
         $record = $logger->records[0];
         Assert::same($record['message'], 'span checkout');
+        Assert::same($record['context']['trace_id'], $traceId);
+        Assert::same($record['context']['span_id'], $spanId);
         Assert::same($record['context']['status'], 'Unset');
         Assert::same($record['context']['duration_ns'], 1);
         Assert::same($record['context']['attributes'], ['env' => 'test', 'user' => 'u1']);
@@ -125,6 +137,25 @@ final class TracerTest
         });
 
         Assert::false($tracer->currentSpan()->isRecording());
+    }
+
+    public function scopedSpanIsPoppedFromStackAfterTrace(): void
+    {
+        $tracer = new LogTracer(new RecordingLogger(), new QueueClock(new \DateTimeImmutable('@0'), 1, 2, 3, 4));
+
+        $firstTraceId = null;
+        $tracer->trace('first', static function (SpanInterface $span) use (&$firstTraceId): void {
+            $firstTraceId = $span->getTraceContext()->traceId;
+        });
+
+        // If the finished span were not popped, the next trace() would see it as
+        // the current parent and wrongly inherit its traceId.
+        $secondTraceId = null;
+        $tracer->trace('second', static function (SpanInterface $span) use (&$secondTraceId): void {
+            $secondTraceId = $span->getTraceContext()->traceId;
+        });
+
+        Assert::notSame($secondTraceId, $firstTraceId);
     }
 
     public function unscopedSpanIsNotCurrent(): void

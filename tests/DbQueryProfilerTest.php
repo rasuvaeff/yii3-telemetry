@@ -6,6 +6,7 @@ namespace Rasuvaeff\Yii3Telemetry\Tests;
 
 use Rasuvaeff\Yii3Telemetry\DbQueryProfiler;
 use Rasuvaeff\Yii3Telemetry\SpanStatusCode;
+use Rasuvaeff\Yii3Telemetry\Tests\Support\FakeProfilerContext;
 use Rasuvaeff\Yii3Telemetry\Tests\Support\RecordingTracer;
 use Rasuvaeff\Yii3Telemetry\TraceKind;
 use Testo\Assert;
@@ -86,6 +87,58 @@ final class DbQueryProfilerTest
         $this->profiler->end('connection=main', $context);
 
         Assert::same($this->tracer->spans[0]->getName(), 'db.connection');
+        Assert::same($this->tracer->spans[0]->getAttributes(), ['db.system' => 'sql']);
+    }
+
+    public function ignoresNonThrowableExceptionValue(): void
+    {
+        // ContextInterface::asArray() is untyped (array); a non-conforming
+        // implementation could put a non-Throwable under 'exception'. The
+        // isset()+instanceof guard must reject it rather than pass it to
+        // Span::recordException(\Throwable), which would fatal.
+        $context = new FakeProfilerContext('command', ['exception' => 'not a throwable']);
+
+        $this->profiler->begin('SELECT 1', $context);
+        $this->profiler->end('SELECT 1', $context);
+
+        $span = $this->tracer->spans[0];
+        Assert::same($span->getStatus()->code, SpanStatusCode::Unset);
+        Assert::count($span->getRecordedExceptions(), 0);
+    }
+
+    public function ignoresNonStringSqlValue(): void
+    {
+        // Same defensive guard, this time on 'sql': a non-string value must
+        // fall back to the type-based name/attributes, not reach
+        // queryAttributes(string).
+        $context = new FakeProfilerContext('command', ['sql' => 42]);
+
+        $this->profiler->begin('SELECT 1', $context);
+        $this->profiler->end('SELECT 1', $context);
+
+        $span = $this->tracer->spans[0];
+        Assert::same($span->getName(), 'db.command');
+        Assert::same($span->getAttributes(), ['db.system' => 'sql']);
+    }
+
+    public function operationIgnoresLeadingNonWordText(): void
+    {
+        $context = new CommandContext('query', 'ctx', '/* hint */ SELECT 1', []);
+
+        $this->profiler->begin('/* hint */ SELECT 1', $context);
+        $this->profiler->end('/* hint */ SELECT 1', $context);
+
+        Assert::same($this->tracer->spans[0]->getAttributes()['db.operation'], 'UNKNOWN');
+    }
+
+    public function operationIsUppercasedAndTrimmedOfLeadingWhitespace(): void
+    {
+        $context = new CommandContext('query', 'ctx', '  select 1', []);
+
+        $this->profiler->begin('  select 1', $context);
+        $this->profiler->end('  select 1', $context);
+
+        Assert::same($this->tracer->spans[0]->getAttributes()['db.operation'], 'SELECT');
     }
 
     public function fallsBackToTokenForArrayContext(): void
