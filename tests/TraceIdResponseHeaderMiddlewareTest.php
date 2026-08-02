@@ -21,6 +21,7 @@ use Testo\Test;
 
 #[Test]
 #[Covers(TraceIdResponseHeaderMiddleware::class)]
+#[Covers(InvalidArgumentException::class)]
 final class TraceIdResponseHeaderMiddlewareTest
 {
     private Psr17Factory $factory;

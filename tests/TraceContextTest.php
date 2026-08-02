@@ -13,6 +13,7 @@ use Testo\Test;
 
 #[Test]
 #[Covers(TraceContext::class)]
+#[Covers(InvalidArgumentException::class)]
 final class TraceContextTest
 {
     private const string TRACE_ID = '0af7651916cd43dd8448eb211c80319c';
@@ -47,6 +48,23 @@ final class TraceContextTest
     public function realIdsAreValid(): void
     {
         Assert::true((new TraceContext(self::TRACE_ID, self::SPAN_ID))->isValid());
+    }
+
+    public function maxFlagsByteIsAccepted(): void
+    {
+        Assert::same((new TraceContext(self::TRACE_ID, self::SPAN_ID, 255))->traceFlags, 255);
+    }
+
+    #[DataProvider('mixedValidityProvider')]
+    public function isValidRequiresBothIdsNonZero(string $traceId, string $spanId): void
+    {
+        Assert::false((new TraceContext($traceId, $spanId))->isValid());
+    }
+
+    public static function mixedValidityProvider(): iterable
+    {
+        yield 'zero trace id, real span id' => [str_repeat('0', 32), self::SPAN_ID];
+        yield 'real trace id, zero span id' => [self::TRACE_ID, str_repeat('0', 16)];
     }
 
     #[DataProvider('sampledProvider')]
