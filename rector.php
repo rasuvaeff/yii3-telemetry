@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rasuvaeff\RectorNamedLiterals\AddNameToLiteralArgumentRector;
 use Rector\Config\RectorConfig;
 use Rector\DeadCode\Rector\ClassMethod\RemoveEmptyClassMethodRector;
 use Rector\DeadCode\Rector\ClassMethod\RemoveUnusedPrivateMethodRector;
@@ -22,4 +23,5 @@ return RectorConfig::configure()
         RemoveUnusedPrivateMethodRector::class => [__DIR__ . '/tests'],
         RemoveEmptyClassMethodRector::class => [__DIR__ . '/tests'],
         RemoveUnusedPublicMethodParameterRector::class => [__DIR__ . '/tests'],
-    ]);
+    ])
+    ->withRules([AddNameToLiteralArgumentRector::class]);

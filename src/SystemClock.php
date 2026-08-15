@@ -21,6 +21,6 @@ final readonly class SystemClock implements ClockInterface
     #[\Override]
     public function monotonicNanos(): int
     {
-        return hrtime(true);
+        return hrtime(as_number: true);
     }
 }

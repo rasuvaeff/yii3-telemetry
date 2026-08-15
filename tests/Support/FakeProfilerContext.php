@@ -14,14 +14,14 @@ use Yiisoft\Db\Profiler\ContextInterface;
  * double lets tests exercise `DbQueryProfiler`'s defensive `isset()`/type
  * checks against exactly that untrusted shape.
  */
-final class FakeProfilerContext implements ContextInterface
+final readonly class FakeProfilerContext implements ContextInterface
 {
     /**
      * @param array<string, mixed> $data
      */
     public function __construct(
-        private readonly string $type,
-        private readonly array $data,
+        private string $type,
+        private array $data,
     ) {}
 
     #[\Override]

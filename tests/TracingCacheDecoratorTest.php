@@ -47,8 +47,8 @@ final class TracingCacheDecoratorTest
         Assert::same($setSpan->getAttributes()['cache.system'], 'psr16');
         Assert::same($setSpan->getAttributes()['cache.item.key'], 'user.1');
 
-        Assert::same($this->tracer->spans[2]->getAttributes()['cache.hit'], true);
-        Assert::same($this->tracer->spans[3]->getAttributes()['cache.hit'], false);
+        Assert::same($this->tracer->spans[2]->getAttributes()['cache.hit'], expected: true);
+        Assert::same($this->tracer->spans[3]->getAttributes()['cache.hit'], expected: false);
     }
 
     public function tracesBulkAndClearOperations(): void

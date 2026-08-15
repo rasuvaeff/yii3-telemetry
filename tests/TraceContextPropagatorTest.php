@@ -6,6 +6,7 @@ namespace Rasuvaeff\Yii3Telemetry\Tests;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Rasuvaeff\PropertyTesting\ArbitraryInterface;
+use Rasuvaeff\PropertyTesting\Classify;
 use Rasuvaeff\PropertyTesting\Gen;
 use Rasuvaeff\PropertyTesting\Property;
 use Rasuvaeff\Yii3Telemetry\TraceContext;
@@ -229,6 +230,112 @@ final class TraceContextPropagatorTest
                 static fn(int $n): string => \sprintf('%016x', $n),
             ),
             'flags' => Gen::intBetween(0, 255),
+        ];
+    }
+
+    /** @return iterable<string, array{string, string, int}> */
+    public static function extractReversesInjectExamples(): iterable
+    {
+        // Flags are a bit field carried as two hex digits: unset, sampled, and
+        // every bit set are where a sprintf/parse pair drops leading zeros or
+        // truncates.
+        yield 'flags unset' => [self::TRACE_ID, self::SPAN_ID, 0x00];
+        yield 'sampled' => [self::TRACE_ID, self::SPAN_ID, 0x01];
+        yield 'all flag bits set' => [self::TRACE_ID, self::SPAN_ID, 0xFF];
+        yield 'ids one bit above invalid' => [\str_repeat('0', 31) . '1', \str_repeat('0', 15) . '1', 0x01];
+    }
+
+    #[Property(runs: 300, timeoutMs: 1000)]
+    public function extractIsIdempotentOverInjection(string $traceparent): void
+    {
+        $incoming = $this->factory->createServerRequest('GET', '/')
+            ->withHeader('traceparent', $traceparent);
+
+        $once = $this->propagator->extract($incoming);
+
+        // An accepted header survives re-injection verbatim; a rejected one
+        // propagates nothing at all, rather than half-parsing into a context a
+        // downstream service would then carry. The two invalid contexts are
+        // not compared field by field on purpose: a parse that failed on the
+        // ids keeps the flags it read, `TraceContext::invalid()` has none, and
+        // neither is ever put on the wire.
+        $reinjected = $this->propagator->inject(
+            $once,
+            $this->factory->createRequest('GET', 'https://api.example'),
+        );
+        $twice = $this->propagator->extract(
+            $this->factory->createServerRequest('GET', '/')
+                ->withHeader('traceparent', $reinjected->getHeaderLine('traceparent')),
+        );
+
+        Classify::cover($once->isValid(), 'accepted', 20.0);
+        Classify::cover(!$once->isValid(), 'rejected', 20.0);
+
+        if ($once->isValid()) {
+            Assert::true($twice->equals($once));
+        } else {
+            Assert::false($twice->isValid());
+            Assert::same($reinjected->getHeaderLine('traceparent'), '');
+        }
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    public static function extractIsIdempotentOverInjectionGenerators(): array
+    {
+        return [
+            'traceparent' => Gen::frequency([
+                // The W3C shape, spelled as the pattern the parser applies.
+                [2, Gen::regex('00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}')],
+                // Wrong version, extra fields, and a future version with a
+                // trailing segment — the forward-compat branch.
+                [1, Gen::regex('(ff|01|0)-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}(-[0-9a-f]{4})?')],
+                // Free-form near misses over the same alphabet: truncated ids,
+                // missing fields, empty string.
+                [2, Gen::stringFrom('0123456789abcdef-', minLength: 0, maxLength: 60)],
+            ]),
+        ];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function extractIsIdempotentOverInjectionExamples(): iterable
+    {
+        yield 'canonical header' => [self::TRACEPARENT];
+        yield 'empty header' => [''];
+        yield 'all-zero ids are not a valid context' => ['00-' . \str_repeat('0', 32) . '-' . \str_repeat('0', 16) . '-01'];
+        yield 'version ff is reserved' => ['ff-' . self::TRACE_ID . '-' . self::SPAN_ID . '-01'];
+        yield 'version 00 forbids a fifth field' => ['00-' . self::TRACE_ID . '-' . self::SPAN_ID . '-01-extra'];
+        yield 'truncated trace id' => ['00-0af7651916cd43dd-' . self::SPAN_ID . '-01'];
+    }
+
+    #[Property(runs: 200)]
+    public function traceStateTravelsOnlyBesideAnAcceptedTraceparent(string $traceparent, string $traceState): void
+    {
+        $incoming = $this->factory->createServerRequest('GET', '/')
+            ->withHeader('traceparent', $traceparent)
+            ->withHeader('tracestate', $traceState);
+
+        $context = $this->propagator->extract($incoming);
+
+        Classify::cover($context->isValid(), 'accepted traceparent', 20.0);
+        Classify::cover(!$context->isValid(), 'rejected traceparent', 20.0);
+
+        // A tracestate without a trace to attach it to is vendor data with no
+        // owner; carrying it forward would let a caller inject arbitrary
+        // header content into every downstream request.
+        Assert::same($context->traceState, $context->isValid() ? $traceState : '');
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    public static function traceStateTravelsOnlyBesideAnAcceptedTraceparentGenerators(): array
+    {
+        return [
+            'traceparent' => Gen::frequency([
+                [1, Gen::regex('00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}')],
+                [1, Gen::stringFrom('0123456789abcdef-', minLength: 0, maxLength: 60)],
+            ]),
+            // `vendor=value` pairs: the shape the W3C spec defines, kept
+            // header-legal so a conforming PSR-7 message accepts it.
+            'traceState' => Gen::regex('[a-z]{1,6}=[a-z0-9]{1,8}(,[a-z]{1,6}=[a-z0-9]{1,8}){0,2}'),
         ];
     }
 }
