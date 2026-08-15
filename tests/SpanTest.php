@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3Telemetry\Tests;
 
 use Rasuvaeff\PropertyTesting\ArbitraryInterface;
+use Rasuvaeff\PropertyTesting\Classify;
 use Rasuvaeff\PropertyTesting\Gen;
 use Rasuvaeff\PropertyTesting\Property;
 use Rasuvaeff\Yii3Telemetry\Exception\InvalidArgumentException;
@@ -226,6 +227,16 @@ final class SpanTest
         ];
     }
 
+    /** @return iterable<string, array{int, int}> */
+    public static function durationEqualsMonotonicDeltaExamples(): iterable
+    {
+        // A span that starts and ends within the same clock tick is the case
+        // an implementation reaching for wall time gets wrong.
+        yield 'instant span' => [0, 0];
+        yield 'instant span at a large offset' => [1_000_000_000, 0];
+        yield 'one nanosecond' => [0, 1];
+    }
+
     #[Property(runs: 200)]
     public function attributeRoundTrips(string $key, string $value): void
     {
@@ -241,6 +252,71 @@ final class SpanTest
         return [
             'key' => Gen::stringAscii(),
             'value' => Gen::stringAscii(),
+        ];
+    }
+
+    #[Property(runs: 200)]
+    public function everyAttributeOfAMapSurvivesIndependently(array $attributes): void
+    {
+        $span = $this->span();
+
+        foreach ($attributes as $key => $value) {
+            $span->setAttribute($key, $value);
+        }
+
+        Classify::when($attributes === [], 'no attributes');
+        Classify::when(\count($attributes) > 3, 'several attributes');
+
+        // One key at a time already round-trips; what this adds is that
+        // writing the next one does not disturb the ones already there.
+        Assert::same($span->getAttributes(), $attributes);
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    public static function everyAttributeOfAMapSurvivesIndependentlyGenerators(): array
+    {
+        return [
+            // Attributes are a string-keyed map of scalars in every exporter
+            // this feeds; a dictionary generator says that directly instead of
+            // rebuilding one from two lists.
+            'attributes' => Gen::dictOf(
+                Gen::stringFrom('abcdefghijklmnopqrstuvwxyz._', minLength: 1, maxLength: 12),
+                // frequency, not oneOf: oneOf picks among literal values,
+                // while the value type here is a union and each arm needs its
+                // own generator.
+                Gen::frequency([
+                    [1, Gen::stringAscii()],
+                    [1, Gen::int()],
+                    [1, Gen::bool()],
+                ]),
+                maxSize: 8,
+            ),
+        ];
+    }
+
+    #[Property(runs: 200)]
+    public function anEndedSpanAcceptsNoFurtherAttributes(string $key, string $before, string $after): void
+    {
+        $span = $this->span();
+        $span->setAttribute($key, $before);
+        $span->end();
+        $span->setAttribute($key, $after);
+
+        Classify::when($before === $after, 'indistinguishable write');
+
+        // Attributes written after end() would reach an exporter that has
+        // already shipped the span, so the write is dropped rather than
+        // silently changing a record that is gone.
+        Assert::same($span->getAttributes()[$key], $before);
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    public static function anEndedSpanAcceptsNoFurtherAttributesGenerators(): array
+    {
+        return [
+            'key' => Gen::stringFrom('abcdefghijklmnopqrstuvwxyz.', minLength: 1, maxLength: 12),
+            'before' => Gen::stringAscii(),
+            'after' => Gen::stringAscii(),
         ];
     }
 
