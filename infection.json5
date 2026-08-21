@@ -17,7 +17,7 @@
     // PHP_INT_MAX), so the explicit cast is psalm-facing only, not a
     // behavioral difference a test can observe. minMsi is left at the
     // pre-existing 85, not raised — untouched by this sweep.
-    "minMsi": 85,
+    "minMsi": 99,
     "mutators": {
         "@default": true
     }
