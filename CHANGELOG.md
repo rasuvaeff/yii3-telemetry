@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.0 — 2026-10-03
+
+- `HttpClientSpanDecorator` can opt out of `traceparent` injection: new trailing
+  constructor params `bool $propagate = true` and `list<string> $propagateTo = []`
+  (exact hosts or leading `*.` wildcards, case-insensitive; invalid entries throw).
+  The CLIENT span is always recorded. Defaults keep the previous behaviour.
+- `PropagationPolicy` — the reusable host-matching rule (`allows(UriInterface|string)`).
+- `GuzzleTracingMiddleware::create()` — CLIENT span per Guzzle call/attempt, ended
+  when the promise settles (`requestAsync`, `Pool` supported), same attributes and
+  error marking as the PSR-18 decorator (shared internal `HttpSpanSupport`),
+  honours `PropagationPolicy`. `guzzlehttp/guzzle` is `suggest` + `require-dev`.
+- `QueueTracing` — queue-agnostic tracing primitives: `inject()` (trace headers +
+  enqueue timestamp, optional scheduled time for delayed messages) and
+  `consume()` (CONSUMER span per message, parented to the producer, queue time as
+  `messaging.message.queue_time_nanos`, always ended). Refs #29: a ready-made
+  `yiisoft/queue` middleware follows that package's first tagged release.
+
 ## 1.1.1 — 2026-07-25
 
 - Reject trailing newlines in W3C trace/span id and flag patterns: anchor with

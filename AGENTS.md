@@ -17,7 +17,9 @@ Public API: `Tracer` (facade), `TracerInterface`, `TracerProviderInterface`,
 `NullSpan`, `TraceKind`, `SpanStatus`, `SpanStatusCode`, `TraceContext`,
 `TraceContextPropagator`, `ClockInterface`, `SystemClock`,
 `Exception\InvalidArgumentException`. Instrumentation:
-`HttpClientSpanDecorator` (PSR-18), `TracingCacheDecorator` (PSR-16),
+`HttpClientSpanDecorator` (PSR-18, `propagate`/`propagateTo` opt-out via
+`PropagationPolicy`), `GuzzleTracingMiddleware` (Guzzle handler stack, suggest),
+`QueueTracing` (queue-agnostic inject/consume), `TracingCacheDecorator` (PSR-16),
 `DbQueryProfiler` (`yiisoft/db`), `ViewRenderSpanListener` (`yiisoft/view`),
 `TraceContextLogger` (PSR-3 log correlation), `TraceIdResponseHeaderMiddleware`
 (PSR-15, opt-in trace-id response header).
@@ -120,11 +122,18 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
   `TELEMETRY_SQL_PARAMS` debug mode, secret masking, and slow-query threshold are
   deliberately NOT in 1.0.0 — parameter values are never attached to a span at
   all (safer than masking). If added later, they must be opt-in, off by default.
-- **Queue instrumentation is deferred**: `yiisoft/queue` has no stable release
-  (dev-master only); do NOT add `minimum-stability: dev` to this core for it.
-  The supported path today is documented in the README: propagate with
-  `toHeaders()`/`fromHeaders()` and open a Consumer span with
-  `trace(traceKind: Consumer, startNanos: <enqueue time>)`.
+- **Queues: primitives, not a middleware.** `yiisoft/queue` has no stable release
+  (dev-master only); do NOT depend on it or add `minimum-stability: dev`.
+  `QueueTracing` works on a plain metadata map; a yiisoft/queue middleware ships
+  after that package's first tag. `consume()` parents the CONSUMER span via the
+  OTel context API (`Span::wrap(...)->activate()`; `Span::getInvalid()` forces a
+  fresh root so a long-running worker never nests jobs). Queue wait time is the
+  `messaging.message.queue_time_nanos` attribute — span duration stays processing
+  time; do not backdate `startNanos` for it.
+- **Guzzle is optional** (`suggest` + `require-dev`, symbols whitelisted in
+  `composer-require-checker.json`). `GuzzleTracingMiddleware` uses `startSpan()`
+  and ends the span in the promise callbacks; shared attribute/error rules live in
+  the `@internal` `HttpSpanSupport` — keep both HTTP instrumentations on it.
 - Code: `declare(strict_types=1)`, `final readonly class` (or `final class` when
   a static/singleton or mutable state is needed), `#[\Override]`, explicit types.
 - **CI workflows are SHA-pinned.** Every `uses:` in `.github/workflows/*.yml`

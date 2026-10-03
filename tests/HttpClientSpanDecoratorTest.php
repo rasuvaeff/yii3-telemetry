@@ -9,6 +9,7 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Rasuvaeff\Yii3Telemetry\Exception\InvalidArgumentException;
 use Rasuvaeff\Yii3Telemetry\HttpClientSpanDecorator;
 use Rasuvaeff\Yii3Telemetry\SpanStatusCode;
 use Rasuvaeff\Yii3Telemetry\Tests\Support\RecordingTracer;
@@ -62,6 +63,67 @@ final class HttpClientSpanDecoratorTest
         $decorator->sendRequest($this->factory->createRequest('GET', 'https://api.example/x'));
 
         Assert::true($client->captured?->hasHeader('traceparent') ?? false);
+    }
+
+    public function propagateFalseRecordsTheSpanButLeavesHeadersUntouched(): void
+    {
+        $client = $this->client(200);
+        $decorator = new HttpClientSpanDecorator($client, $this->tracer, propagate: false);
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://api.example/x'));
+
+        Assert::count($this->tracer->spans, 1);
+        Assert::same($this->tracer->spans[0]->getKind(), TraceKind::Client);
+        Assert::same($this->tracer->spans[0]->getAttributes()['http.response.status_code'], 200);
+        Assert::false($client->captured?->hasHeader('traceparent') ?? true);
+        Assert::false($client->captured?->hasHeader('tracestate') ?? true);
+    }
+
+    public function allowlistInjectsOnlyForMatchingHosts(): void
+    {
+        $client = $this->client(200);
+        $decorator = new HttpClientSpanDecorator(
+            $client,
+            $this->tracer,
+            propagateTo: ['api.internal', '*.svc.cluster.local'],
+        );
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://api.internal/x'));
+        Assert::true($client->captured?->hasHeader('traceparent') ?? false);
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://Billing.SVC.cluster.local/x'));
+        Assert::true($client->captured?->hasHeader('traceparent') ?? false);
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://third-party.example/x'));
+        Assert::false($client->captured?->hasHeader('traceparent') ?? true);
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://svc.cluster.local/x'));
+        Assert::false($client->captured?->hasHeader('traceparent') ?? true);
+
+        Assert::count($this->tracer->spans, 4);
+    }
+
+    public function propagateFalseWinsOverAnAllowlist(): void
+    {
+        $client = $this->client(200);
+        $decorator = new HttpClientSpanDecorator($client, $this->tracer, propagate: false, propagateTo: ['api.example']);
+
+        $decorator->sendRequest($this->factory->createRequest('GET', 'https://api.example/x'));
+
+        Assert::false($client->captured?->hasHeader('traceparent') ?? true);
+    }
+
+    public function rejectsAnInvalidAllowlistEntry(): void
+    {
+        try {
+            new HttpClientSpanDecorator($this->client(200), $this->tracer, propagateTo: ['api.*']);
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('ropagation host');
+
+            return;
+        }
+
+        Assert::fail('expected an InvalidArgumentException');
     }
 
     public function marksClientAndServerErrorsAsError(): void

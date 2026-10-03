@@ -142,10 +142,128 @@ $context = $propagator->fromHeaders($message['headers'] ?? []);
 `fromHeaders` сопоставляет имена case-insensitively; некорректный контекст даёт
 пустую карту из `toHeaders`, поэтому round trip всегда безопасен.
 
-> **Roadmap по инструментированию очередей.** Готовый middleware для `yiisoft/queue`
-> (Producer inject + Consumer span) отложен до выхода стабильного релиза
-> `yiisoft/queue` — описанный выше carrier API — поддерживаемый способ
-> распространения трассировки через любую очередь сегодня.
+### Отказ от `traceparent` (сторонние API)
+
+`traceparent` уместен для ваших сервисов и неуместен для сторонних API:
+неожиданный заголовок выдаёт скрейпер, раскрывает внутренний id внешней стороне,
+а некоторые API отвергают неизвестные заголовки. CLIENT span сохраняется в любом
+случае — настраивается только инжект:
+
+```php
+new HttpClientSpanDecorator($client, $tracer, propagate: false);                  // только span
+new HttpClientSpanDecorator($client, $tracer, propagateTo: ['api.internal', '*.svc.cluster.local']);
+```
+
+| `propagate` | `propagateTo` | Инжектит |
+|---|---|---|
+| `true` (по умолчанию) | `[]` (по умолчанию) | в каждый запрос (поведение 1.1) |
+| `true` | непустой | только если host запроса совпал с записью |
+| `false` | любой | никогда |
+
+Запись — точный host (`api.internal`) или wildcard в начале (`*.svc.cluster.local` —
+только поддомены, **не** сам apex). Сопоставление без учёта регистра; некорректная
+запись бросает `InvalidArgumentException`. То же правило — переиспользуемый
+`PropagationPolicy` (`new PropagationPolicy(enabled: true, hosts: [...])`,
+`->allows($uriOrHost)`), его использует Guzzle middleware.
+
+### Guzzle
+
+`GuzzleTracingMiddleware` — аналог PSR-18 декоратора для `HandlerStack`
+(`guzzlehttp/guzzle` — только `suggest`, не жёсткая зависимость). PSR-18 обёртка
+над Guzzle-клиентом теряет вызовы `requestAsync()`/`Pool` и прячет ретраи;
+middleware лишён обоих недостатков:
+
+```php
+$stack = HandlerStack::create();
+$stack->push(GuzzleTracingMiddleware::create($tracer), 'tracing');
+// для стороннего API вместо этого: span оставить, заголовок не слать
+// $stack->push(GuzzleTracingMiddleware::create($tracer, new PropagationPolicy(enabled: false)));
+
+$client = new Client(['handler' => $stack]);
+```
+
+- CLIENT span открывается на вызов и завершается, когда **promise settled**, а не
+  когда вернулся handler — `requestAsync()`, `Pool` и `Each::ofLimit()` работают.
+- Те же атрибуты и пометка ошибок 4xx/5xx, что у `HttpClientSpanDecorator`
+  (общий helper). Rejection пишет исключение и ставит status Error;
+  `BadResponseException` дополнительно сохраняет `http.response.status_code`.
+- `traceparent` несёт id самого CLIENT span, с учётом `PropagationPolicy`.
+- **Позиция задаёт гранулярность.** `push()` *внутри* (после) retry middleware —
+  один span на попытку, ретраи видны; *снаружи* (до) — один span на логический
+  вызов.
+
+### Очереди
+
+У `yiisoft/queue` пока нет tagged-релиза, поэтому ядро поставляет
+**не привязанные к очереди** примитивы вместо middleware: `QueueTracing` работает
+с обычной картой metadata сообщения и не зависит ни от одного пакета очереди.
+
+- `inject(array $metadata, ?int $enqueuedAtNanos = null, ?int $availableAtNanos = null): array` —
+  добавляет `traceparent`/`tracestate` текущего контекста и время постановки
+  (`telemetry.enqueued_at_nanos`, наносекунды unix-эпохи; по умолчанию «сейчас»).
+  Для отложенного сообщения передайте `availableAtNanos`.
+- `consume(array $metadata, string $name, callable $handler, array $attributes = []): mixed` —
+  выполняет handler в CONSUMER span **на каждое сообщение**, с родителем-producer
+  (новый root без валидных заголовков); span завершается до возврата или
+  исключения; исключение записывается, ставит status Error и пробрасывается.
+
+```php
+final readonly class TracingPushMiddleware implements MiddlewarePushInterface
+{
+    public function __construct(private QueueTracing $tracing) {}
+
+    public function processPush(PushRequest $request, MessageHandlerPushInterface $handler): PushRequest
+    {
+        $message = $request->getMessage();
+        $message = $message->withMetadata($this->tracing->inject($message->getMetadata()));
+
+        return $handler->handlePush($request->withMessage($message));
+    }
+}
+
+final readonly class TracingConsumeMiddleware implements MiddlewareConsumeInterface
+{
+    public function __construct(private QueueTracing $tracing) {}
+
+    public function processConsume(ConsumeRequest $request, MessageHandlerConsumeInterface $handler): ConsumeRequest
+    {
+        $message = $request->getMessage();
+
+        return $this->tracing->consume(
+            $message->getMetadata(),
+            'process ' . $message->getHandlerName(),
+            static fn (): ConsumeRequest => $handler->handleConsume($request),
+            ['messaging.system' => 'yii-queue'],
+        );
+    }
+}
+```
+
+(Имена интерфейсов и методов выше соответствуют `master` `yiisoft/queue` и в вашей
+ревизии могут отличаться — важны два вызова `QueueTracing`.) Готовый middleware
+для `yiisoft/queue` появится после его первого tagged-релиза.
+
+Решения:
+
+- **Время ожидания — атрибут, а не span и не сдвиг старта.** Span покрывает только
+  обработку, поэтому его длительность остаётся временем handler (алерты и
+  перцентили не загрязняются простоем очереди), а в трассе ровно один span на
+  сообщение. Время в очереди — `messaging.message.queue_time_nanos` («сейчас» минус
+  время постановки; для отложенного — минус большее из времени постановки и
+  `availableAtNanos`, не отрицательное). Сдвиг `startNanos` добавил бы ожидание к
+  длительности, отдельный wait-span удвоил бы число span-ов.
+- **Долгоживущие воркеры.** `queue:listen` не завершается, поэтому корневой span
+  консольной команды не должен становиться родителем всех задач. `consume()` на
+  время handler активирует контекст producer (или пустой), так что задача не
+  вкладывается ни в span команды, ни в предыдущую задачу.
+- Producer активируется через OpenTelemetry context API, поэтому родительство
+  работает с OTel-бэкендом (`yii3-telemetry-otel`); с другим трейсером span всё
+  равно создаётся, но как root.
+- Атрибуты следуют messaging-конвенциям OpenTelemetry
+  (`messaging.operation.type = process`); `messaging.system`,
+  `messaging.destination.name` или номер попытки добавляйте через `$attributes`
+  (они приоритетнее значений по умолчанию). Сообщения, отправленные до включения
+  трассировки, не имеют заголовков и просто начинают новую трассу.
 
 ### Часы
 
@@ -185,7 +303,9 @@ Backend-агностичное инструментирование, запис�
 
 | Класс | Оборачивает / слушает | Span-ы |
 |---|---|---|
-| `HttpClientSpanDecorator` | PSR-18 клиент | `HTTP <method>` (+ инжект `traceparent`) |
+| `HttpClientSpanDecorator` | PSR-18 клиент | `HTTP <method>` (+ инжект `traceparent`, если не отключён) |
+| `GuzzleTracingMiddleware` | `HandlerStack` Guzzle | `HTTP <method>` на попытку/вызов, безопасен для async |
+| `QueueTracing` | push/consume хуки любой очереди | `Consumer` span на сообщение |
 | `TracingCacheDecorator` | PSR-16 кеш | `cache.<op>` |
 | `DbQueryProfiler` | профайлер `yiisoft/db` | `db.query` (только параметризованный SQL) |
 | `ViewRenderSpanListener` | PSR-14 события `yiisoft/view` | `view.render` |
