@@ -1,5 +1,8 @@
 {
     "symbol-whitelist": [
+        "GuzzleHttp\\Exception\\BadResponseException",
+        "GuzzleHttp\\Promise\\Create",
+        "GuzzleHttp\\Promise\\PromiseInterface",
         "Yiisoft\\Db\\Profiler\\ProfilerInterface",
         "Yiisoft\\Db\\Profiler\\ContextInterface",
         "Yiisoft\\View\\Event\\View\\BeforeRender",

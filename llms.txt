@@ -142,10 +142,36 @@ $connection->setProfiler(new DbQueryProfiler($tracer, dbSystem: 'postgresql')); 
 ```
 
 - `yiisoft/db` / `yiisoft/view` are `suggest` (optional); their symbols are in
-  `composer-require-checker.json`. Queue instrumentation is deferred
-  (`yiisoft/queue` has no stable release) — propagate through queues with
-  `toHeaders()`/`fromHeaders()` + `trace(traceKind: Consumer, startNanos: <enqueue ns>)`.
+  `composer-require-checker.json`; `guzzlehttp/guzzle` is `suggest` too.
 - HTTP + cache use `trace()`; DB + view use `startSpan()` (split begin/end).
+
+### Propagation opt-out, Guzzle, queues
+
+```php
+use Rasuvaeff\Yii3Telemetry\{GuzzleTracingMiddleware, PropagationPolicy, QueueTracing};
+
+// Span always recorded; traceparent injected per policy. Defaults inject everywhere.
+new HttpClientSpanDecorator($c, $tracer, propagate: false);                       // never inject
+new HttpClientSpanDecorator($c, $tracer, propagateTo: ['api.internal', '*.svc.local']); // allowlist
+// entries: exact host or leading `*.` (subdomains only, not apex); case-insensitive;
+// invalid entry => Exception\InvalidArgumentException
+$policy = new PropagationPolicy(enabled: true, hosts: ['api.internal']);
+$policy->allows($uriOrHostString): bool;
+
+// Guzzle (suggest): span ends on promise settle (async/Pool ok); after a retry
+// middleware => span per attempt, before it => span per logical call.
+$stack->push(GuzzleTracingMiddleware::create($tracer, $policy), 'tracing');
+
+// Queues (queue-agnostic; yiisoft/queue has no tagged release). Producer / consumer:
+$queue = new QueueTracing($tracer);   // + optional TraceContextPropagator, ClockInterface
+$metadata = $queue->inject($metadata, enqueuedAtNanos: null, availableAtNanos: null); // traceparent + telemetry.enqueued_at_nanos
+$result = $queue->consume($metadata, 'process email.send', fn (SpanInterface $s) => $handle(), ['messaging.system' => 'x']);
+```
+
+`consume()`: Consumer span per message, parented to the producer (fresh root if no
+valid headers; activated via the OTel context API, so the OTel backend is needed
+for parenting), always ended, exception => recorded + Error + rethrown. Queue time
+is attribute `messaging.message.queue_time_nanos` (span duration = processing only).
 
 ### Log correlation / trace id exposure
 
