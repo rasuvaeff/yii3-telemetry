@@ -64,31 +64,51 @@ final readonly class GuzzleTracingMiddleware
                 }
 
                 return $promise->then(
-                    static function (mixed $response) use ($span): mixed {
-                        if ($response instanceof ResponseInterface) {
-                            HttpSpanSupport::recordStatus($span, $response->getStatusCode());
-                        }
-
-                        $span->end();
-
-                        return $response;
-                    },
-                    static function (mixed $reason) use ($span): PromiseInterface {
-                        if ($reason instanceof BadResponseException) {
-                            HttpSpanSupport::recordStatus($span, $reason->getResponse()->getStatusCode());
-                        }
-
-                        if ($reason instanceof \Throwable) {
-                            self::fail($span, $reason);
-                        } else {
-                            $span->setStatus(SpanStatusCode::Error, 'Request rejected');
-                            $span->end();
-                        }
-
-                        return Create::rejectionFor($reason);
-                    },
+                    self::onFulfilled($span),
+                    self::onRejected($span),
                 );
             };
+    }
+
+    /**
+     * The returned callable is deliberately typed as a bare `callable` (the
+     * Guzzle RetryMiddleware pattern): the promise callbacks stay behind it,
+     * so static analysis resolves the generics of
+     * {@see PromiseInterface::then()} from its own defaults instead of trying
+     * to unify them with the callbacks' `mixed` signatures.
+     */
+    private static function onFulfilled(SpanInterface $span): callable
+    {
+        return static function (mixed $response) use ($span): mixed {
+            if ($response instanceof ResponseInterface) {
+                HttpSpanSupport::recordStatus($span, $response->getStatusCode());
+            }
+
+            $span->end();
+
+            return $response;
+        };
+    }
+
+    /**
+     * @see onFulfilled() for why this returns a bare `callable`
+     */
+    private static function onRejected(SpanInterface $span): callable
+    {
+        return static function (mixed $reason) use ($span): mixed {
+            if ($reason instanceof BadResponseException) {
+                HttpSpanSupport::recordStatus($span, $reason->getResponse()->getStatusCode());
+            }
+
+            if ($reason instanceof \Throwable) {
+                self::fail($span, $reason);
+            } else {
+                $span->setStatus(SpanStatusCode::Error, 'Request rejected');
+                $span->end();
+            }
+
+            return Create::rejectionFor($reason);
+        };
     }
 
     private static function fail(SpanInterface $span, \Throwable $exception): void
