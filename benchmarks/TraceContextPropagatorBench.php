@@ -15,27 +15,48 @@ final class TraceContextPropagatorBench
     private const string SPAN_ID = 'b7ad6b7169203331';
     private const string TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
 
+    private static ?\Psr\Http\Message\ServerRequestInterface $incomingRequest = null;
+    private static ?\Psr\Http\Message\RequestInterface $outgoingRequest = null;
+    private static ?TraceContext $context = null;
+    private static ?TraceContextPropagator $propagator = null;
+
     #[Bench(
         callables: [
-            'inject' => [self::class, 'inject'],
+            // Keep the comparison within extraction. The benchmark harness
+            // always reports `current`; it must not compare extraction with
+            // injection, which has different work and allocations.
+            'repeat' => [self::class, 'extract'],
         ],
         calls: 5_000,
         iterations: 10,
+        tolerance: \INF,
     )]
     public static function extract(): TraceContext
     {
-        $request = (new Psr17Factory())
+        self::$incomingRequest ??= (new Psr17Factory())
             ->createServerRequest('GET', '/')
             ->withHeader('traceparent', self::TRACEPARENT);
 
-        return (new TraceContextPropagator())->extract($request);
+        self::$propagator ??= new TraceContextPropagator();
+
+        return self::$propagator->extract(self::$incomingRequest);
     }
 
+    #[Bench(
+        callables: [
+            'repeat' => [self::class, 'inject'],
+        ],
+        calls: 5_000,
+        iterations: 10,
+        tolerance: \INF,
+    )]
     public static function inject(): string
     {
-        $request = (new Psr17Factory())->createRequest('GET', 'https://api.example');
-        $context = new TraceContext(self::TRACE_ID, self::SPAN_ID, 1);
+        self::$outgoingRequest ??= (new Psr17Factory())->createRequest('GET', 'https://api.example');
+        self::$context ??= new TraceContext(self::TRACE_ID, self::SPAN_ID, 1);
 
-        return (new TraceContextPropagator())->inject($context, $request)->getHeaderLine('traceparent');
+        self::$propagator ??= new TraceContextPropagator();
+
+        return self::$propagator->inject(self::$context, self::$outgoingRequest)->getHeaderLine('traceparent');
     }
 }
