@@ -265,6 +265,54 @@ final readonly class TracingConsumeMiddleware implements MiddlewareConsumeInterf
   (они приоритетнее значений по умолчанию). Сообщения, отправленные до включения
   трассировки, не имеют заголовков и просто начинают новую трассу.
 
+### Серверы (gRPC и вызовы без PSR-7)
+
+Вызов, чей контекст трассировки лежит в обычной карте metadata (gRPC metadata,
+envelope Rapira по RPC), — не PSR-7 request, поэтому `OtelMiddleware` тут не
+применим. `ServerTracing::serve()` — серверный брат `consume()`: выполняет
+handler в SERVER span **на каждый вызов**, с родителем-caller (новый root без
+валидных заголовков); span завершается до возврата или исключения; исключение
+записывается, ставит status Error и пробрасывается.
+
+```php
+// Rasuvaeff\Yii3Telemetry\ServerTracing, Rasuvaeff\Yii3Telemetry\TraceKind
+public function serve(
+    array $headers,                     // карта metadata вызова (внутри traceparent/tracestate)
+    string $name,                      // low-cardinality, например 'grpc tickets.hold'
+    callable $handler,
+    array $attributes = [],             // например ['rpc.system' => 'grpc'] — messaging-значений по умолчанию нет
+    TraceKind $kind = TraceKind::Server,
+): mixed;
+```
+
+```php
+final readonly class GrpcRequestHandler
+{
+    public function __construct(private ServerTracing $tracing) {}
+
+    public function handle(string $method, array $metadata, callable $next): mixed
+    {
+        return $this->tracing->serve(
+            $metadata,
+            'grpc ' . $method,
+            static fn (): mixed => $next(),
+            ['rpc.system' => 'grpc'],
+        );
+    }
+}
+```
+
+Решения:
+
+- **Никаких messaging-атрибутов.** `consume()` жёстко задаёт messaging-атрибуты;
+  server span говорит только то, что caller передаёт через `$attributes`
+  (`rpc.system`, `rpc.method`, …). Вид span по умолчанию `TraceKind::Server`,
+  переопределяется на вызов.
+- **Долгоживущие воркеры.** Как `consume()`: контекст caller активируется только на
+  время handler — через OpenTelemetry context API (родительство работает с OTel-бэкендом),
+  отсоединяется в `finally`. Следующий вызов без `traceparent` на том же воркере
+  начинает свежую корневую трассу, а не предыдущего caller.
+
 ### Часы
 
 `ClockInterface` расширяет PSR-20 монотонным чтением — два измерения, которые
@@ -306,6 +354,7 @@ Backend-агностичное инструментирование, запис�
 | `HttpClientSpanDecorator` | PSR-18 клиент | `HTTP <method>` (+ инжект `traceparent`, если не отключён) |
 | `GuzzleTracingMiddleware` | `HandlerStack` Guzzle | `HTTP <method>` на попытку/вызов, безопасен для async |
 | `QueueTracing` | push/consume хуки любой очереди | `Consumer` span на сообщение |
+| `ServerTracing` | любой серверный вызов без PSR-7 (gRPC metadata, RPC) | `Server` span на вызов |
 | `TracingCacheDecorator` | PSR-16 кеш | `cache.<op>` |
 | `DbQueryProfiler` | профайлер `yiisoft/db` | `db.query` (только параметризованный SQL) |
 | `ViewRenderSpanListener` | PSR-14 события `yiisoft/view` | `view.render` |

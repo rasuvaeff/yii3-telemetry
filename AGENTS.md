@@ -19,7 +19,9 @@ Public API: `Tracer` (facade), `TracerInterface`, `TracerProviderInterface`,
 `Exception\InvalidArgumentException`. Instrumentation:
 `HttpClientSpanDecorator` (PSR-18, `propagate`/`propagateTo` opt-out via
 `PropagationPolicy`), `GuzzleTracingMiddleware` (Guzzle handler stack, suggest),
-`QueueTracing` (queue-agnostic inject/consume), `TracingCacheDecorator` (PSR-16),
+`QueueTracing` (queue-agnostic inject/consume) and `ServerTracing`
+(carrier-agnostic SERVER span for non-PSR-7 calls, e.g. gRPC metadata),
+`TracingCacheDecorator` (PSR-16),
 `DbQueryProfiler` (`yiisoft/db`), `ViewRenderSpanListener` (`yiisoft/view`),
 `TraceContextLogger` (PSR-3 log correlation), `TraceIdResponseHeaderMiddleware`
 (PSR-15, opt-in trace-id response header).
@@ -129,7 +131,11 @@ Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
   OTel context API (`Span::wrap(...)->activate()`; `Span::getInvalid()` forces a
   fresh root so a long-running worker never nests jobs). Queue wait time is the
   `messaging.message.queue_time_nanos` attribute — span duration stays processing
-  time; do not backdate `startNanos` for it.
+  time; do not backdate `startNanos` for it. `ServerTracing::serve()` is the
+  server-side twin for non-PSR-7 calls (gRPC metadata, RPC envelopes): same
+  activation, NO messaging attributes (only the caller's `$attributes`), span
+  kind defaults to `TraceKind::Server` (overridable per call — the issue's #34
+  contract), headers are a plain metadata map filtered to string values.
 - **Guzzle is optional** (`suggest` + `require-dev`, symbols whitelisted in
   `composer-require-checker.json`). `GuzzleTracingMiddleware` uses `startSpan()`
   and ends the span in the promise callbacks; shared attribute/error rules live in
