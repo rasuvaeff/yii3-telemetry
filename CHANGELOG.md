@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.0 — 2026-10-17
+
+- `ServerTracing::serve(array $headers, string $name, callable $handler,
+  array $attributes = [], TraceKind $kind = TraceKind::Server)` — carrier-agnostic
+  SERVER span for calls that arrive as a plain metadata map (gRPC metadata, an RPC
+  envelope) instead of a PSR-7 request. Same activation as
+  `QueueTracing::consume()`: `fromHeaders()`, the remote parent activated through
+  the OpenTelemetry context API, `trace()`, detach in `finally`, a fresh root when
+  the headers carry nothing (a second call without headers never nests under the
+  first one's scope on a long-lived worker). Unlike `consume()` there are no
+  messaging attributes — only the caller's `$attributes`; the span kind defaults
+  to `TraceKind::Server` and can be overridden per call. Refs #34.
+
 ## 1.2.0 — 2026-10-03
 
 - `HttpClientSpanDecorator` can opt out of `traceparent` injection: new trailing

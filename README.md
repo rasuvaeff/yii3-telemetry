@@ -265,6 +265,54 @@ Design notes:
   (they win over the defaults). Messages pushed before tracing was enabled have
   no headers and simply start a fresh trace.
 
+### Servers (gRPC and calls without PSR-7)
+
+A call whose trace context is in a plain metadata map (gRPC metadata, a Rapira
+RPC envelope) is not a PSR-7 request, so `OtelMiddleware` does not apply.
+`ServerTracing::serve()` is the server-side sibling of `consume()`: it runs the
+handler inside a SERVER span **per call**, parented to the caller (a fresh root
+without valid headers), ended before it returns or throws; an exception is
+recorded, sets status Error and is re-thrown.
+
+```php
+// Rasuvaeff\Yii3Telemetry\ServerTracing, Rasuvaeff\Yii3Telemetry\TraceKind
+public function serve(
+    array $headers,                     // the call's metadata map (traceparent/tracestate inside)
+    string $name,                       // low-cardinality, e.g. 'grpc tickets.hold'
+    callable $handler,
+    array $attributes = [],             // e.g. ['rpc.system' => 'grpc'] — no messaging defaults
+    TraceKind $kind = TraceKind::Server,
+): mixed;
+```
+
+```php
+final readonly class GrpcRequestHandler
+{
+    public function __construct(private ServerTracing $tracing) {}
+
+    public function handle(string $method, array $metadata, callable $next): mixed
+    {
+        return $this->tracing->serve(
+            $metadata,
+            'grpc ' . $method,
+            static fn (): mixed => $next(),
+            ['rpc.system' => 'grpc'],
+        );
+    }
+}
+```
+
+Design notes:
+
+- **No messaging attributes.** `consume()` hard-codes the messaging ones; a server
+  span says only what the caller passes via `$attributes` (`rpc.system`,
+  `rpc.method`, …). The span kind is `TraceKind::Server` by default and can be
+  overridden per call.
+- **Long-lived workers.** As `consume()`, the caller's context is activated for
+  the handler only — through the OpenTelemetry context API (parenting needs the
+  OTel backend), detached in a `finally`. The next call without a `traceparent`
+  on the same worker starts a fresh root trace, never the previous caller's.
+
 ### Clock
 
 `ClockInterface` extends PSR-20 with a monotonic reading — two clocks that must
@@ -305,117 +353,7 @@ would fatal when the subsystem isn't installed.
 | `HttpClientSpanDecorator` | a PSR-18 client | `HTTP <method>` (+ `traceparent` injected unless opted out) |
 | `GuzzleTracingMiddleware` | a Guzzle `HandlerStack` | `HTTP <method>` per attempt/call, async-safe |
 | `QueueTracing` | any queue's push/consume hooks | `Consumer` span per message |
-| `TracingCacheDecorator` | a PSR-16 cache | `cache.<op>` |
-| `DbQueryProfiler` | `yiisoft/db` profiler | `db.query` (parameterized SQL only) |
-| `ViewRenderSpanListener` | `yiisoft/view` PSR-14 events | `view.render` |
-| `TraceContextLogger` | a PSR-3 logger | adds `trace_id`/`span_id` to log context |
-| `TraceIdResponseHeaderMiddleware` | PSR-15 response | `X-Trace-Id` response header (opt-in) |
-
-```php
-// HTTP client (PSR-18) — inner client is wrapped
-$client = new HttpClientSpanDecorator($innerClient, $tracer);
-
-// Cache (PSR-16)
-$cache = new TracingCacheDecorator($innerCache, $tracer);
-
-// DB (yiisoft/db) — pass the semconv db.system for your driver (default 'sql')
-$connection->setProfiler(new DbQueryProfiler($tracer, dbSystem: 'postgresql'));
-
-// View (yiisoft/view) — register in config/events.php
-BeforeRender::class => [[ViewRenderSpanListener::class, 'beforeRender']],
-AfterRender::class  => [[ViewRenderSpanListener::class, 'afterRender']],
-```
-
-`DbQueryProfiler` and `ViewRenderSpanListener` bracket a subsystem's split
-begin/end hooks with `Tracer::startSpan()` (a manual span the caller ends).
-`yiisoft/db` and `yiisoft/view` are optional (`suggest`); their symbols are
-declared in `composer-require-checker.json`.
-
-### Log correlation & exposing the trace id
-
-```php
-// Wrap the application logger — every record inside an active trace gets
-// trace_id / span_id in its context (existing keys are never overwritten):
-$logger = new TraceContextLogger($innerLogger, $tracer);
-
-// Opt-in: return the trace id to the client for support tickets. Place it
-// AFTER the tracing middleware (inside the root span):
-$middleware = new TraceIdResponseHeaderMiddleware($tracer);              // X-Trace-Id
-$middleware = new TraceIdResponseHeaderMiddleware($tracer, 'Trace-Ref'); // custom name
-```
-
-Without an active valid trace context both are transparent: the log record and
-the response pass through unchanged.
-
-## Security
-
-- **SQL safety**: `DbQueryProfiler` puts only the **parameterized** SQL into
-  `db.statement` — parameter values are never attached to a span. A debug
-  opt-in for parameter values and a slow-query threshold are deliberately not
-  implemented; if they land later, they will be off by default.
-- `TraceContext` validates ids (hex32 / hex16) and flags (0..255) in its
-  constructor; malformed propagation headers are rejected, not trusted.
-- `trace()` never swallows exceptions — failures stay visible.
-
-## Examples
-
-Runnable, server-independent scripts live in [`examples/`](examples/):
-`01_basic_trace.php`, `02_nested_trace.php`, `03_propagation.php`. See
-[`examples/README.md`](examples/README.md).
-
-## Development
-
-```bash
-docker run --rm -v "$PWD":/app -w /app composer:2 composer build
-```
-
-Runs validate → normalize → require-checker → cs → psalm → tests (incl.
-property tests). `make build`, `make test`, `make mutation`, `make release-check`
-are also available.
-
-## License
-
-BSD-3-Clause. See [LICENSE.md](LICENSE.md).
-### Clock
-
-`ClockInterface` extends PSR-20 with a monotonic reading — two clocks that must
-not be mixed:
-
-- `now(): \DateTimeImmutable` — the wall clock (span start timestamp);
-- `monotonicNanos(): int` — `hrtime`, for measuring durations.
-
-`SystemClock` is the default (and is a valid PSR-20 clock).
-
-## Wiring (`yiisoft/config`)
-
-The core `config/di.php` binds **only** the facade (`Tracer`, `TracerInterface`).
-It never binds `TracerProviderInterface` — that swappable key is owned by exactly
-one source. With no backend installed, bind the no-op provider in your app:
-
-```php
-// config/common/di.php
-use Rasuvaeff\Yii3Telemetry\NullTracerProvider;
-use Rasuvaeff\Yii3Telemetry\TracerProviderInterface;
-
-return [
-    TracerProviderInterface::class => NullTracerProvider::class,
-];
-```
-
-Installing `yii3-telemetry-otel` provides the real binding instead — binding it
-in two vendor packages is a deliberate `yiisoft/config` `Duplicate key` error.
-
-## Instrumentation
-
-Backend-agnostic instrumentation that records spans through the facade. Wire it
-**app-side** — never unconditionally in a package `di.php`, or the container
-would fatal when the subsystem isn't installed.
-
-| Class | Wraps / listens to | Spans |
-|---|---|---|
-| `HttpClientSpanDecorator` | a PSR-18 client | `HTTP <method>` (+ `traceparent` injected unless opted out) |
-| `GuzzleTracingMiddleware` | a Guzzle `HandlerStack` | `HTTP <method>` per attempt/call, async-safe |
-| `QueueTracing` | any queue's push/consume hooks | `Consumer` span per message |
+| `ServerTracing` | any non-PSR-7 server call (gRPC metadata, RPC) | `Server` span per call |
 | `TracingCacheDecorator` | a PSR-16 cache | `cache.<op>` |
 | `DbQueryProfiler` | `yiisoft/db` profiler | `db.query` (parameterized SQL only) |
 | `ViewRenderSpanListener` | `yiisoft/view` PSR-14 events | `view.render` |

@@ -145,7 +145,7 @@ $connection->setProfiler(new DbQueryProfiler($tracer, dbSystem: 'postgresql')); 
   `composer-require-checker.json`; `guzzlehttp/guzzle` is `suggest` too.
 - HTTP + cache use `trace()`; DB + view use `startSpan()` (split begin/end).
 
-### Propagation opt-out, Guzzle, queues
+### Propagation opt-out, Guzzle, queues, servers
 
 ```php
 use Rasuvaeff\Yii3Telemetry\{GuzzleTracingMiddleware, PropagationPolicy, QueueTracing};
@@ -172,6 +172,16 @@ $result = $queue->consume($metadata, 'process email.send', fn (SpanInterface $s)
 valid headers; activated via the OTel context API, so the OTel backend is needed
 for parenting), always ended, exception => recorded + Error + rethrown. Queue time
 is attribute `messaging.message.queue_time_nanos` (span duration = processing only).
+
+// Servers (non-PSR-7: gRPC metadata map, RPC envelope) — server-side sibling of consume():
+$server = new ServerTracing($tracer);   // + optional TraceContextPropagator
+$result = $server->serve($metadata, 'grpc tickets.hold', fn (SpanInterface $s) => $handle(), ['rpc.system' => 'grpc']);
+
+`serve()`: Server span per call (kind defaults to `TraceKind::Server`, overridable
+via the trailing `kind` param), parented to the caller (fresh root if no valid
+headers), no messaging attributes — only the caller's `$attributes`, always ended,
+exception => recorded + Error + rethrown. On a long-lived worker the next call
+without a header starts a fresh root trace, never the previous call's scope.
 
 ### Log correlation / trace id exposure
 
