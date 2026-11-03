@@ -19,6 +19,7 @@ use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Psr\Http\Message\RequestInterface;
 use Rasuvaeff\Yii3Telemetry\GuzzleTracingMiddleware;
+use Rasuvaeff\Yii3Telemetry\HttpSpanSupport;
 use Rasuvaeff\Yii3Telemetry\PropagationPolicy;
 use Rasuvaeff\Yii3Telemetry\SpanStatusCode;
 use Rasuvaeff\Yii3Telemetry\Tests\Support\RecordingTracer;
@@ -30,6 +31,7 @@ use Testo\Test;
 
 #[Test]
 #[Covers(GuzzleTracingMiddleware::class)]
+#[Covers(HttpSpanSupport::class)]
 final class GuzzleTracingMiddlewareTest
 {
     private RecordingTracer $tracer;

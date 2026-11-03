@@ -11,6 +11,7 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Rasuvaeff\Yii3Telemetry\Exception\InvalidArgumentException;
 use Rasuvaeff\Yii3Telemetry\HttpClientSpanDecorator;
+use Rasuvaeff\Yii3Telemetry\HttpSpanSupport;
 use Rasuvaeff\Yii3Telemetry\SpanStatusCode;
 use Rasuvaeff\Yii3Telemetry\Tests\Support\RecordingTracer;
 use Rasuvaeff\Yii3Telemetry\TraceKind;
@@ -21,6 +22,7 @@ use Testo\Test;
 
 #[Test]
 #[Covers(HttpClientSpanDecorator::class)]
+#[Covers(HttpSpanSupport::class)]
 final class HttpClientSpanDecoratorTest
 {
     private RecordingTracer $tracer;
