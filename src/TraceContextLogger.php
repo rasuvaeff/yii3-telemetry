@@ -29,6 +29,12 @@ final readonly class TraceContextLogger implements LoggerInterface
 
     /**
      * @param array<array-key, mixed> $context
+     *
+     * Matches the capability contract Psalm 7 assigns to the PSR-3 interface
+     * (everything except write-refs): the decorator delegates to an arbitrary
+     * LoggerInterface implementation and adds no effects of its own.
+     *
+     * @psalm-capabilities read-props|write-this-props|write-props|read-globals|write-globals|io|time
      */
     #[\Override]
     public function log(mixed $level, \Stringable|string $message, array $context = []): void
