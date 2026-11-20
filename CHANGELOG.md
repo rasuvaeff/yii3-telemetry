@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Declared psalm capabilities on the tracer API surface (`getContext()`, `currentSpan()`, `getTraceContext()`, `NullSpan::instance()`, `TraceContext` factories): psalm 7.12 enforces capability contracts strictly and PSR-3's restricted `log()` could no longer call the tracer getters. No runtime behavior change.
+
 - Mutation testing now counts code that tests execute but do not name in `#[Covers]` (`infection --with-uncovered`). `HttpSpanSupport` is now credited to the Guzzle middleware and HTTP client decorator tests; overall MSI 95% to 99.7%.
 
 ## 1.3.0 — 2026-10-17

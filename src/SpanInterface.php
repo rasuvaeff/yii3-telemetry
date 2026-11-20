@@ -37,5 +37,11 @@ interface SpanInterface
 
     public function isRecording(): bool;
 
+    /**
+     * Read-only getter — callable from capability-restricted contexts
+     * (e.g. PSR-3's `log()`; see {@see TraceContextLogger}).
+     *
+     * @psalm-capabilities read-props
+     */
     public function getTraceContext(): TraceContext;
 }
