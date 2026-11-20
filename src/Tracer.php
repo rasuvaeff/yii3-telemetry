@@ -54,12 +54,18 @@ final readonly class Tracer implements TracerInterface
         return $this->tracer->startSpan($name, $attributes, $traceKind, $startNanos);
     }
 
+    /**
+     * @psalm-capabilities read-props|read-globals|write-globals
+     */
     #[\Override]
     public function currentSpan(): SpanInterface
     {
         return $this->tracer->currentSpan();
     }
 
+    /**
+     * @psalm-capabilities read-props|read-globals|write-globals
+     */
     #[\Override]
     public function getContext(): TraceContext
     {

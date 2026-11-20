@@ -55,12 +55,18 @@ final class NullTracer implements TracerInterface
         return NullSpan::instance();
     }
 
+    /**
+     * @psalm-capabilities read-props|read-globals|write-globals
+     */
     #[\Override]
     public function currentSpan(): SpanInterface
     {
         return NullSpan::instance();
     }
 
+    /**
+     * @psalm-capabilities read-props|read-globals|write-globals
+     */
     #[\Override]
     public function getContext(): TraceContext
     {

@@ -129,6 +129,9 @@ final class Span implements SpanInterface
         return !$this->ended;
     }
 
+    /**
+     * @psalm-capabilities read-props
+     */
     #[\Override]
     public function getTraceContext(): TraceContext
     {

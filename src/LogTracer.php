@@ -84,6 +84,9 @@ final class LogTracer implements TracerInterface
         return $this->createSpan($name, $attributes, $traceKind, $startNanos);
     }
 
+    /**
+     * @psalm-capabilities read-props|read-globals|write-globals
+     */
     #[\Override]
     public function currentSpan(): SpanInterface
     {
@@ -94,6 +97,9 @@ final class LogTracer implements TracerInterface
         return $this->spanStack[array_key_last($this->spanStack)];
     }
 
+    /**
+     * @psalm-capabilities read-props|read-globals|write-globals
+     */
     #[\Override]
     public function getContext(): TraceContext
     {

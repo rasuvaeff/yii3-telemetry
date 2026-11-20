@@ -17,6 +17,11 @@ final class NullSpan implements SpanInterface
 
     private function __construct() {}
 
+    /**
+     * Memoized singleton: the first call seeds a static cache.
+     *
+     * @psalm-capabilities read-globals|write-globals
+     */
     public static function instance(): self
     {
         return self::$instance ??= new self();
@@ -46,6 +51,9 @@ final class NullSpan implements SpanInterface
         return false;
     }
 
+    /**
+     * @psalm-capabilities read-props
+     */
     #[\Override]
     public function getTraceContext(): TraceContext
     {
