@@ -64,11 +64,23 @@ interface TracerInterface
 
     /**
      * The active span, or a non-recording span when none is active. Never `null`.
+     *
+     * Read-only getter, like {@see getContext()} — except that NullTracer and
+     * LogTracer's empty-stack path touch {@see NullSpan::instance()}'s static
+     * memo cache.
+     *
+     * @psalm-capabilities read-props|read-globals|write-globals
      */
     public function currentSpan(): SpanInterface;
 
     /**
      * The active trace context, or an invalid context when none is active.
+     *
+     * Effect-free beyond reading props and NullSpan's static memo cache —
+     * callable from any context granting the capabilities below, including
+     * PSR-3's capability-restricted `log()` (see {@see TraceContextLogger}).
+     *
+     * @psalm-capabilities read-props|read-globals|write-globals
      */
     public function getContext(): TraceContext;
 }

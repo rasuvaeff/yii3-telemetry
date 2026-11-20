@@ -23,6 +23,9 @@ final readonly class TraceContext
     private const string INVALID_SPAN_ID = '0000000000000000';
     private const int FLAG_SAMPLED = 0x01;
 
+    /**
+     * @psalm-pure
+     */
     public function __construct(
         public string $traceId,
         public string $spanId,
@@ -42,6 +45,9 @@ final readonly class TraceContext
         }
     }
 
+    /**
+     * @psalm-pure
+     */
     public static function invalid(): self
     {
         return new self(self::INVALID_TRACE_ID, self::INVALID_SPAN_ID, 0);
@@ -49,6 +55,8 @@ final readonly class TraceContext
 
     /**
      * A context is valid when both ids are present (non-zero), per W3C.
+     *
+     * @psalm-capabilities read-props
      */
     public function isValid(): bool
     {
