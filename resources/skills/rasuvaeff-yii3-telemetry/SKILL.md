@@ -41,8 +41,9 @@ OpenTelemetry-compatible backend. Core exports nothing itself — a backend
 5. **Propagation is W3C `traceparent`.** `extract()` reads an incoming
    `ServerRequestInterface`; `inject()` writes an outgoing `RequestInterface`
    (never a response). For queues use `QueueTracing::inject()` / `consume()`.
-   Third-party calls: `HttpClientSpanDecorator(propagate: false)` or `propagateTo: [...]`
-   (same for `GuzzleTracingMiddleware`) keep the span but skip `traceparent`.
+   Third-party calls: `HttpClientSpanDecorator(propagate: false)` or `propagateTo: [...]`;
+   for Guzzle `GuzzleTracingMiddleware::create($tracer, new PropagationPolicy(enabled: false))`
+   (or `hosts: [...]`). Both keep the span but skip `traceparent`.
    `TraceIdResponseHeaderMiddleware` must sit AFTER (inside) the tracing
    middleware, or the context is already gone.
 
